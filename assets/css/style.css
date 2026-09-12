@@ -1,0 +1,261 @@
+:root {
+  font-family:
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Helvetica,
+    Arial,
+    sans-serif;
+
+  line-height: 1.6;
+  color: #24292f;
+}
+
+body {
+  margin: 0;
+  background: #ffffff;
+}
+
+.content {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 40px 24px 80px;
+}
+
+
+/* -------------------------------------------------------
+   Texto
+   ------------------------------------------------------- */
+
+h1,
+h2,
+h3,
+h4 {
+  line-height: 1.25;
+  margin-top: 1.8em;
+  margin-bottom: 0.6em;
+}
+
+h1 {
+  padding-bottom: 0.3em;
+  border-bottom: 1px solid #d0d7de;
+}
+
+h2 {
+  padding-bottom: 0.25em;
+  border-bottom: 1px solid #d8dee4;
+}
+
+p,
+li {
+  font-size: 16px;
+}
+
+a {
+  color: #0969da;
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+
+/* -------------------------------------------------------
+   Código inline
+   ------------------------------------------------------- */
+
+code {
+  font-family:
+    ui-monospace,
+    SFMono-Regular,
+    SF Mono,
+    Menlo,
+    Consolas,
+    "Liberation Mono",
+    monospace;
+
+  font-size: 0.9em;
+}
+
+:not(pre) > code {
+  padding: 0.2em 0.4em;
+  background: #eff1f3;
+  border-radius: 4px;
+}
+
+
+/* -------------------------------------------------------
+   Bloques de código
+   ------------------------------------------------------- */
+
+pre {
+  position: relative;
+
+  overflow-x: auto;
+
+  padding: 16px;
+  margin: 1.2em 0;
+
+  background: #f6f8fa;
+
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+
+  line-height: 1.45;
+}
+
+pre code {
+  padding: 0;
+  background: transparent;
+}
+
+
+/* -------------------------------------------------------
+   Botón copiar
+   ------------------------------------------------------- */
+
+.copy-code-button {
+  position: absolute;
+
+  top: 8px;
+  right: 8px;
+
+  padding: 5px 8px;
+
+  background: #ffffff;
+  color: #57606a;
+
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+
+  font-size: 14px;
+  cursor: pointer;
+
+  opacity: 0;
+  transition:
+    opacity 0.15s ease,
+    background 0.15s ease;
+}
+
+pre:hover .copy-code-button,
+.copy-code-button:focus {
+  opacity: 1;
+}
+
+.copy-code-button:hover {
+  background: #f3f4f6;
+}
+
+
+/* -------------------------------------------------------
+   Otros elementos Markdown
+   ------------------------------------------------------- */
+
+blockquote {
+  margin-left: 0;
+  padding-left: 1em;
+
+  color: #57606a;
+  border-left: 4px solid #d0d7de;
+}
+
+table {
+  border-collapse: collapse;
+}
+
+th,
+td {
+  padding: 6px 13px;
+  border: 1px solid #d0d7de;
+}
+
+th {
+  background: #f6f8fa;
+}
+
+img {
+  max-width: 100%;
+}
+
+
+/* -------------------------------------------------------
+   Syntax highlighting — Rouge
+   ------------------------------------------------------- */
+
+.highlight .c,
+.highlight .c1,
+.highlight .cm,
+.highlight .cs {
+  color: #6e7781;
+  font-style: italic;
+}
+
+.highlight .k,
+.highlight .kd,
+.highlight .kn,
+.highlight .kp,
+.highlight .kr,
+.highlight .kt {
+  color: #cf222e;
+}
+
+.highlight .s,
+.highlight .s1,
+.highlight .s2,
+.highlight .sb,
+.highlight .sc,
+.highlight .sd,
+.highlight .se,
+.highlight .sh,
+.highlight .si,
+.highlight .sx {
+  color: #0a3069;
+}
+
+.highlight .na,
+.highlight .nb,
+.highlight .nc,
+.highlight .no,
+.highlight .nd,
+.highlight .ne,
+.highlight .nf,
+.highlight .ni,
+.highlight .nl,
+.highlight .nn,
+.highlight .nt,
+.highlight .nv {
+  color: #8250df;
+}
+
+.highlight .m,
+.highlight .mf,
+.highlight .mh,
+.highlight .mi,
+.highlight .mo,
+.highlight .il {
+  color: #0550ae;
+}
+
+.highlight .o,
+.highlight .ow {
+  color: #cf222e;
+}
+
+.highlight .p {
+  color: #24292f;
+}
+
+.highlight .err {
+  color: #82071e;
+}
+
+.highlight .gd {
+  color: #82071e;
+  background: #ffebe9;
+}
+
+.highlight .gi {
+  color: #116329;
+  background: #dafbe1;
+}
