@@ -112,7 +112,7 @@ Sobre este código:
 
 - `create_timer(1.0, ...)` programa una llamada periódica, aproximadamente a 1 Hz. 
 - El `10` del publicador es el tamaño del historial de mensajes. Limita la cantidad de mensajes que se guardan si un suscriptor no los recibe suficientemente rápido.
-- `rclpy.spin()` hace que el ejecutor atienda los callbacks pendientes, incluido el del temporizador. Conviene que los callbacks sean breves para no retrasar a los demás.
+- `rclpy.spin()` mantiene al ejecutor esperando trabajo y ejecutando los callbacks del nodo. Cuando no hay trabajo, espera; cuando lo hay —por ejemplo, llega un mensaje o vence un temporizador— ejecuta el callback correspondiente y vuelve a esperar. En este caso solo puede vencer un temporizador, en el siguiente ejemplo veremos un callback de recepción de mensaje.
 
 
 Podríamos ejecutar el nodo simplemente yendo al directorio en el que esté `productor.py` y ejecutando `python3 productor.py`, o dándole al archivo permiso de ejecución con `chmod ugo+x productor.py` y ejecutándolo con `./productor.py`.
