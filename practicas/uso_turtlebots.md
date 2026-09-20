@@ -93,9 +93,11 @@ En la ventana que aparecerá debes seleccionar el topic que contiene las imágen
 En el modo de escritorio remoto todo el código que se ejecuta reside físicamente en el robot, así que para trabajar en él tenéis que copiarlo en un *pendrive* o con un software especial. Para copiar archivos entre tu PC y el escritorio remoto:
 
 - Si tu ordenador es Windows puedes instalarte el programa [WinSCP](https://winscp.net/eng/download.php). 
+
 <!--
 - Si tu ordenador es Ubuntu Linux **TO-DO: COMO HACERLO EN LINUX EN MODO GRAFICO**
 -->
+
 - Si tu ordenador es otro Linux o Mac puedes usar la orden de línea de comandos **scp**. El formato del comando es `scp archivo_origen destino`, por ejemplo para copiar un archivo llamado `datos.zip` que está en el directorio base del usuario del robot, harías **desde tu ordenador** `scp turtlebot@ip-del-turtlebot:~/datos.zip .`. Te pedirá la contraseña y copiará el archivo.
 
 
