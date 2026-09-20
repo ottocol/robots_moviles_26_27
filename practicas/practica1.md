@@ -40,11 +40,11 @@ ros2 launch prac1 simulacion.launch.py
 
 ## 1. Medidas con el láser 2D
 
-Nuestros Turtlebot 2 tienen un sensor laser 2D modelo [Hokuyo ust-10lx](https://www.hokuyo-aut.jp/search/single.php?serial=167#spec), con un alcance nominal de 10 m. (dependiendo de la superficie puede ser menor), una resolución angular de 0.25° y un campo de visión de 270°. 
+Nuestros Turtlebot 2 tienen un sensor laser 2D modelo [Hokuyo ust-10lx](https://www.hokuyo-aut.jp/search/single.php?serial=167#spec), con un alcance nominal de 10 m. (dependiendo del material/color de la superficie detectada puede ser menor), una resolución angular de 0.25° y un campo de visión de 270°. 
 
 El laser es bastante preciso, pero no da siempre la misma medida exacta aunque el robot esté quieto.
 
-> La simulación incluye errores en las medidas de los sensores, pero los parámetros de error no son los del laser real, no uses las medidas simuladas para hacer una estimación del error.
+> El topic del laser, tanto en la simulación como en el robot real es `/scan`. La simulación incluye errores en las medidas de los sensores, pero los parámetros de error no son los del laser real, no uses las medidas simuladas para hacer una estimación del error.
 
 **Tarea 1.1** (simulador): escribe un nodo ROS2 que sin mover al robot tome el rayo más cercano a 0° (el frente del robot, dirección del eje X) y guarde las medidas en un archivo.
 
@@ -90,7 +90,7 @@ para crear un mapa del entorno a partir de los datos del laser tenemos que trans
 
 **Tarea 3.2** (robot real): prueba tu algoritmo de mapeado "de un solo rayo" en el robot real y guarda los resultados en archivos, para poder representarlos gráficamente con posterioridad. A ser posible haz varias pruebas en distintos "entornos" (dentro del laboratorio de robótica, en los pasillos,...).
 
-***Tarea 3.3** (evaluación de resultados) ¿En qué partes del laboratorio o adyacentes (pasillos, etc) funciona mejor?. ¿Qué problemas tiene el mapa, tiene algún tipo de defecto? Intenta buscar las causas y explica cómo podrías mejorarlo. Incluye varios mapas de forma gráfica en la memoria.
+**Tarea 3.3** (evaluación de resultados) ¿En qué partes del laboratorio o adyacentes (pasillos, etc) funciona mejor?. ¿Qué problemas tiene el mapa, tiene algún tipo de defecto? Intenta buscar las causas y explica cómo podrías mejorarlo. Incluye varios mapas de forma gráfica en la memoria.
 
 Aunque lo llamemos mapeado "de un solo rayo" puedes tomar varios si lo prefieres, así el mapa se generará más rápido. No lo hagas con todos, se complicará el tratamiento de datos, eso se propone en una de las ampliaciones.
 
@@ -235,7 +235,7 @@ ros2 bag info fichero_mcap
 ```
 os mostrará la duración, número de mensajes, topics, y los tipos y número de mensajes grabados por cada topic.
 
-Para visualizar el contenido de un ROSbag podéis usar la herramienta de ROS2 `rqt_bag` pasándole el directorio donde está el .mcap. También podéis usar una herramienta web llamada [Foxglove](https://foxglove.dev/product/visualization), que funciona algo mejor. Elegid la opción de "Open local file".
+Para visualizar el contenido de un ROSbag podéis usar la herramienta de ROS2 `rqt_bag` pasándole el directorio donde está el .mcap. También podéis usar una herramienta web llamada [Foxglove](https://foxglove.dev/product/visualization), que funciona algo mejor. Id a "Get Started for free" y una vez dados de alta en elegid en el panel la opción de "Open local file".
 
 Podéis grabar vuestros propios rosbag de manera sencilla, así podréis reproducir el mismo experimento las veces que queráis. El comando es `record` y tenéis que pasar una lista con los topics que queráis grabar, por ejemplo 
 
