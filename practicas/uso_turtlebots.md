@@ -70,10 +70,10 @@ Si quieres, puedes visualizar el *scan* del laser en RViz:
 
 ## Arranque de la cámara
 
-Para arrancar la cámara RGBD pasa el parámetro `astra:=True` cuando arranques la base:
+Para arrancar la cámara RGBD pasa el parámetro `astra:=true` cuando arranques la base. Si ya la tienes arrancada, párala con Ctrl-C.
 
 ```bash
-ros2 launch kobuki kobuki.launch.py astra:=True
+ros2 launch kobuki kobuki.launch.py astra:=true
 ```
 
 Puedes visualizar las imágenes de la cámara en RViz2, pero también lo puedes hacer con un nodo llamado `rqt_image_view`:
