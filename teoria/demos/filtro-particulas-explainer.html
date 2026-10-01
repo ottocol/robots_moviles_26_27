@@ -1,0 +1,798 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>html{color-scheme:light}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>Filtro de partículas paso a paso</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: mesa de trabajo — mapa grande + algoritmo al lado; debajo sensor y resampling; luego parámetros y tabla */
+:root{
+  --bg:#eef1f4; --panel:#ffffff; --ink:#151d27; --muted:#59646f; --line:#d3dae2; --grid:#e7ecf1;
+  --wall:#1d2530; --accent:#2445c4; --accent-soft:#e3e9ff; --beam:#d98e00; --beam-soft:#fff3d6;
+  --pl:44%; --ps:72%;
+  --f-display:"Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --f-body:"Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
+  --f-mono:"JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0e1319; --panel:#151c24; --ink:#e4e9ef; --muted:#97a3b0; --line:#2a3541; --grid:#1d2630;
+  --wall:#c5cfda; --accent:#829dff; --accent-soft:#1e2950; --beam:#ffb52e; --beam-soft:#3a2c0e;
+  --pl:64%; --ps:78%; color-scheme:dark }}
+:root[data-theme="dark"]{
+  --bg:#0e1319; --panel:#151c24; --ink:#e4e9ef; --muted:#97a3b0; --line:#2a3541; --grid:#1d2630;
+  --wall:#c5cfda; --accent:#829dff; --accent-soft:#1e2950; --beam:#ffb52e; --beam-soft:#3a2c0e;
+  --pl:64%; --ps:78%; color-scheme:dark }
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.5}
+.wrap{max-width:1320px;margin:0 auto;padding-inline:16px;padding-block:20px 48px}
+header.top{display:flex;flex-wrap:wrap;gap:8px 24px;align-items:end;justify-content:space-between;margin-bottom:16px}
+.eyebrow{margin:0;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+h1{font-family:var(--f-display);font-weight:700;font-size:clamp(26px,3.4vw,38px);line-height:1.1;margin:2px 0 0;text-wrap:balance}
+.lede{margin:6px 0 0;color:var(--muted);max-width:68ch}
+h2{font-family:var(--f-display);font-weight:600;font-size:17px;margin:0;letter-spacing:.005em}
+.grid{display:grid;gap:16px;grid-template-columns:minmax(0,1.55fr) minmax(0,1fr);grid-auto-flow:row dense;align-items:start}
+.mapcol{grid-column:1;grid-row:1}.algo{grid-column:2;grid-row:1}
+.grid>.full{grid-column:1/-1}
+@media (max-width:960px){.grid{grid-template-columns:minmax(0,1fr)}.mapcol,.algo{grid-column:1;grid-row:auto}}
+.panels{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;font-size:13.5px;padding:8px 12px;border:1px solid var(--line);border-radius:8px;background:var(--panel)}
+.panels .lbl{font-size:12px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+.panels label{display:inline-flex;gap:5px;align-items:center;cursor:pointer;user-select:none}
+.panels .auto{padding-left:12px;border-left:1px solid var(--line);color:var(--muted)}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px;min-width:0}
+.head{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:10px}
+.sub{font-size:13px;color:var(--muted)}
+.mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+
+/* mapa */
+.mapcol{display:flex;flex-direction:column;gap:12px;min-width:0}
+.inputs{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px}
+.chip{font-family:var(--f-mono);font-size:12.5px;padding:4px 9px;border-radius:6px;border:1px solid var(--line);background:var(--bg);white-space:nowrap}
+.chip.z{border-color:var(--beam);background:var(--beam-soft)}
+.chip.u{border-color:var(--accent);background:var(--accent-soft)}
+#mapWrap{position:relative;width:100%}
+#map{display:block;width:100%;border-radius:6px;touch-action:none}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12.5px;color:var(--muted);margin-top:8px}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.sw{display:inline-block;width:18px;height:0;border-top:2px solid}
+.transport{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+button{font:inherit;font-size:14px;border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:7px 13px;border-radius:7px;cursor:pointer}
+button:hover{border-color:var(--accent)}
+button:disabled{opacity:.45;cursor:default;border-color:var(--line)}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--panel);font-weight:700}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.sep{flex:1}
+label.tog{display:inline-flex;gap:6px;align-items:center;font-size:14px;cursor:pointer;user-select:none}
+.speed{display:inline-flex;gap:6px;align-items:center;font-size:13px;color:var(--muted)}
+.speed input{width:90px}
+.kbd{font-size:12px;color:var(--muted)}
+
+/* algoritmo */
+.algo{display:flex;flex-direction:column;gap:12px}
+.code{font-family:var(--f-mono);font-size:13px;line-height:1.75;overflow-x:auto;background:var(--bg);border-radius:8px;padding:10px 0}
+.ln{display:flex;gap:10px;padding:0 12px;border-left:3px solid transparent;white-space:nowrap;align-items:baseline}
+.ln .no{color:var(--muted);width:1.6em;text-align:right;flex:none;opacity:.7}
+.ln.on{background:var(--accent-soft);border-left-color:var(--accent)}
+.ln .tag{margin-left:auto;padding-left:16px;font-family:var(--f-body);font-size:12px;color:var(--muted)}
+.ln.on .tag{color:var(--accent);font-weight:700}
+.ln .mval{color:var(--accent);font-weight:600}
+.kw{font-weight:600}
+.in-u{border-bottom:2px solid transparent}.in-z{border-bottom:2px solid transparent}
+.ln.on .in-u{border-color:var(--accent)} .ln.on .in-z{border-color:var(--beam)}
+.note{font-size:12.5px;color:var(--muted);margin:0}
+.explain{border-top:1px solid var(--line);padding-top:12px}
+.phase{display:inline-block;font-size:11.5px;letter-spacing:.07em;text-transform:uppercase;font-weight:700;color:var(--accent);margin-bottom:4px}
+#explain{margin:0;max-width:65ch}
+#explain b{font-weight:700}
+
+/* sensor */
+.sensor{}
+#beam{display:block;width:100%;height:230px}
+.readout{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:13px;margin-top:8px}
+.readout .mono b{font-weight:600}
+.blegend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--muted);margin-top:6px}
+
+/* resampling */
+.resample{display:flex;flex-direction:column;gap:10px}
+.barbox{position:relative;padding-top:26px}
+.ruler{position:relative;height:46px;display:flex;border-radius:6px;overflow:hidden;border:1px solid var(--line);background:var(--bg)}
+.seg{position:relative;height:100%;display:flex;align-items:center;justify-content:center;font-family:var(--f-mono);font-size:12px;color:#fff;font-weight:600;overflow:hidden;border-right:1px solid var(--panel);transition:flex-basis .35s ease, filter .2s}
+.seg.hit{filter:brightness(1.25) saturate(1.2)}
+.seg .cnt{position:absolute;bottom:2px;right:4px;font-size:10.5px;background:rgba(0,0,0,.35);padding:0 4px;border-radius:4px}
+.ticks{display:flex;justify-content:space-between;font-family:var(--f-mono);font-size:11px;color:var(--muted);margin-top:3px}
+.mk{position:absolute;top:0;width:0;height:100%;transform:translateX(-50%);pointer-events:none}
+.mk::before{content:"";position:absolute;top:8px;left:-6px;border:6px solid transparent;border-top:10px solid var(--ink)}
+.mk::after{content:"";position:absolute;top:24px;left:-1px;width:2px;height:48px;background:var(--ink)}
+.mk.old{opacity:.35}
+.mk.drop{animation:drop .32s ease-out}
+.mk span{position:absolute;top:-6px;left:50%;transform:translateX(-50%);font-family:var(--f-mono);font-size:10.5px;color:var(--ink);white-space:nowrap}
+@keyframes drop{from{transform:translate(-50%,-14px);opacity:0}to{transform:translate(-50%,0);opacity:1}}
+.placeholder{font-size:13px;color:var(--muted);padding:12px;border:1px dashed var(--line);border-radius:6px;text-align:center}
+.newset{display:flex;flex-wrap:wrap;gap:6px;min-height:30px;align-items:center}
+.pchip{font-family:var(--f-mono);font-size:12px;color:#fff;font-weight:600;padding:3px 8px;border-radius:5px;animation:pop .25s ease-out}
+@keyframes pop{from{transform:scale(.6);opacity:0}to{transform:none;opacity:1}}
+.stats{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px;color:var(--muted)}
+.stats b{color:var(--ink);font-family:var(--f-mono);font-weight:600}
+
+/* parámetros */
+.params{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+.pgroup h3{font-family:var(--f-display);font-size:14px;font-weight:600;margin:0 0 2px}
+.pgroup p{margin:0 0 8px;font-size:12.5px;color:var(--muted)}
+.row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 10px;align-items:center;margin-bottom:6px}
+.row label{font-size:13px}
+.row output{font-family:var(--f-mono);font-size:12.5px;font-variant-numeric:tabular-nums;color:var(--accent)}
+.row input[type=range]{grid-column:1/-1;width:100%;accent-color:var(--accent)}
+select{font:inherit;font-size:13px;padding:5px 8px;border-radius:6px;border:1px solid var(--line);background:var(--panel);color:var(--ink);width:100%}
+.rowsel{display:flex;flex-direction:column;gap:3px;margin-bottom:8px;font-size:13px}
+.btnrow{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+.ugrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:6px}
+.ugrid label{display:flex;flex-direction:column;gap:3px;font-size:12.5px}
+.ugrid input{font-family:var(--f-mono);font-size:13px;padding:5px 6px;border-radius:6px;border:1px solid var(--line);background:var(--panel);color:var(--ink);width:100%;min-width:0}
+
+/* tabla */
+.tablecard{}
+.tscroll{overflow-x:auto;max-height:340px;overflow-y:auto}
+table{border-collapse:collapse;width:100%;font-family:var(--f-mono);font-size:12.5px;font-variant-numeric:tabular-nums}
+th{font-family:var(--f-body);font-weight:700;font-size:12px;color:var(--muted);text-align:right;padding:4px 8px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--panel)}
+td{text-align:right;padding:4px 8px;border-bottom:1px solid var(--grid)}
+th:first-child,td:first-child{text-align:left}
+tr.sel td{background:var(--accent-soft)}
+tbody tr{cursor:pointer}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;vertical-align:middle}
+.wbar{display:inline-block;height:6px;background:var(--accent);border-radius:3px;vertical-align:middle;margin-left:6px}
+@media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
+</style>
+
+</head>
+<body>
+<div class="wrap">
+<header class="top">
+  <div>
+    <p class="eyebrow">Robots Móviles · Tema 2 · Parte 4</p>
+    <h1>Filtro de partículas paso a paso</h1>
+    <p class="lede">Un ciclo de localización con pocas partículas: modelo de movimiento, modelo del sensor <i>beam</i> con un único rayo a 0° y resampling. Avanza fase a fase y cambia los parámetros sobre la marcha.</p>
+  </div>
+  <div class="panels" id="panels">
+    <span class="lbl">Paneles</span>
+    <label><input type="checkbox" data-p="pAlgo" checked> Algoritmo</label>
+    <label><input type="checkbox" data-p="pSensor" checked> Modelo del sensor</label>
+    <label><input type="checkbox" data-p="pResample" checked> Resampling</label>
+    <label><input type="checkbox" data-p="pParams" checked> Parámetros</label>
+    <label><input type="checkbox" data-p="pTable" checked> Partículas</label>
+    <label class="auto" title="El modelo del sensor solo se ve en la fase 2 y el resampling en la fase 3"><input type="checkbox" id="autoPanels"> Según la fase</label>
+  </div>
+</header>
+
+<main class="grid">
+  <section class="mapcol">
+    <div class="card">
+      <div class="inputs">
+        <span class="chip" id="cT">t = 0</span>
+        <span class="chip u" id="cU">u<sub>t</sub> = —</span>
+        <span class="chip z" id="cZ">z<sub>t</sub> = —</span>
+      </div>
+      <div id="mapWrap"><canvas id="map" aria-label="Mapa con las partículas"></canvas></div>
+      <div class="legend">
+        <span><span class="sw" style="border-color:var(--accent);border-top-style:dashed"></span><span id="lgExp">rayo esperado z<sub>exp</sub> de la partícula</span></span>
+        <span><span class="sw" style="border-color:var(--beam);border-top-width:3px"></span>medida real z</span>
+        <span><span class="sw" style="border-color:var(--ink);border-top-style:dotted"></span>estimación (media ponderada)</span>
+        <span>tamaño y opacidad = peso</span>
+      </div>
+    </div>
+    <div class="transport">
+      <button id="bReset">Reiniciar</button>
+      <button id="bBack">◂ Atrás</button>
+      <button id="bStep" class="primary">Paso ▸</button>
+      <button id="bCycle">Ciclo completo ▸▸</button>
+      <button id="bPlay">Reproducir</button>
+      <button id="bRepeat">↻ Repetir animación</button>
+      <span class="speed">velocidad <input type="range" id="speed" min="0.25" max="3" step="0.25" value="1"></span>
+      <span class="sep"></span>
+      <label class="tog"><input type="checkbox" id="showRobot" checked> Mostrar robot real</label>
+      <label class="tog"><input type="checkbox" id="detail" checked> Partícula a partícula</label>
+    </div>
+    <p class="kbd">Teclado: → paso · ← atrás · R repetir animación · C ciclo · P reproducir · V mostrar/ocultar robot. Pincha una partícula para inspeccionarla; arrástrala para moverla y Ctrl + arrastrar para girarla (Cmd o Alt en Mac).</p>
+  </section>
+
+  <aside class="card algo" id="pAlgo">
+    <div class="head"><h2>Algoritmo</h2><span class="sub" id="algoPhase">Inicialización</span></div>
+    <div class="code" id="code">
+      <div class="ln" data-l="0"><span class="no">1</span><span><span class="kw">Algorithm Particle_filter</span>(X<sub>t−1</sub>, <span class="in-u">u<sub>t</sub></span>, <span class="in-z">z<sub>t</sub></span>)</span><span class="tag">entradas</span></div>
+      <div class="ln" data-l="1"><span class="no">2</span><span>&nbsp;&nbsp;X̄<sub>t</sub> = X<sub>t</sub> = ∅</span></div>
+      <div class="ln" data-l="2"><span class="no">3</span><span>&nbsp;&nbsp;<span class="kw">for</span> m = 1 <span class="kw">to</span> M <span class="kw">do</span> <span class="mval" id="m1"></span></span></div>
+      <div class="ln" data-l="3"><span class="no">4</span><span>&nbsp;&nbsp;&nbsp;&nbsp;sample x<sub>t</sub><sup>[m]</sup> ~ p(x<sub>t</sub> | u<sub>t</sub>, x<sub>t−1</sub><sup>[m]</sup>)</span><span class="tag">① movimiento</span></div>
+      <div class="ln" data-l="4"><span class="no">5</span><span>&nbsp;&nbsp;<span class="kw">endfor</span></span></div>
+      <div class="ln" data-l="5"><span class="no">6</span><span>&nbsp;&nbsp;<span class="kw">for</span> m = 1 <span class="kw">to</span> M <span class="kw">do</span> <span class="mval" id="m2"></span></span></div>
+      <div class="ln" data-l="6"><span class="no">7</span><span>&nbsp;&nbsp;&nbsp;&nbsp;w<sub>t</sub><sup>[m]</sup> = p(z<sub>t</sub> | x<sub>t</sub><sup>[m]</sup>)</span><span class="tag">② sensor</span></div>
+      <div class="ln" data-l="7"><span class="no">8</span><span>&nbsp;&nbsp;&nbsp;&nbsp;X̄<sub>t</sub> = X̄<sub>t</sub> + ⟨x<sub>t</sub><sup>[m]</sup>, w<sub>t</sub><sup>[m]</sup>⟩</span></div>
+      <div class="ln" data-l="8"><span class="no">9</span><span>&nbsp;&nbsp;<span class="kw">endfor</span></span></div>
+      <div class="ln" data-l="9"><span class="no">10</span><span>&nbsp;&nbsp;<span class="kw">for</span> m = 1 <span class="kw">to</span> M <span class="kw">do</span> <span class="mval" id="m3"></span></span></div>
+      <div class="ln" data-l="10"><span class="no">11</span><span>&nbsp;&nbsp;&nbsp;&nbsp;draw i with probability ∝ w<sub>t</sub><sup>[i]</sup></span><span class="tag">③ con reemplazo</span></div>
+      <div class="ln" data-l="11"><span class="no">12</span><span>&nbsp;&nbsp;&nbsp;&nbsp;add x<sub>t</sub><sup>[i]</sup> to X<sub>t</sub></span></div>
+      <div class="ln" data-l="12"><span class="no">13</span><span>&nbsp;&nbsp;<span class="kw">endfor</span></span></div>
+      <div class="ln" data-l="13"><span class="no">14</span><span>&nbsp;&nbsp;<span class="kw">return</span> X<sub>t</sub></span></div>
+    </div>
+    <div class="explain">
+      <span class="phase" id="phase">Inicialización</span>
+      <p id="explain"></p>
+    </div>
+  </aside>
+
+  <section class="card sensor" id="pSensor">
+    <div class="head"><h2 id="sensorTitle">Modelo del sensor <i>beam</i></h2><span class="sub" id="beamWho">partícula 1</span></div>
+    <canvas id="beam" aria-label="Curva del modelo del sensor"></canvas>
+    <div class="blegend" id="blegend">
+      <span><span class="sw" style="border-color:var(--accent);border-top-width:3px"></span>p(z | x, m) total</span>
+      <span>componentes: <span style="color:var(--accent)">hit</span> · <span id="lgShort">short</span> · max · rand</span>
+    </div>
+    <div class="readout" id="readout"></div>
+  </section>
+
+  <section class="card resample" id="pResample">
+    <div class="head"><h2>Resampling</h2><span class="sub" id="resWho">Multinomial, con reemplazo</span></div>
+    <div id="barArea"></div>
+    <div>
+      <div class="sub" style="margin-bottom:4px">Nuevo conjunto X<sub>t</sub></div>
+      <div class="newset" id="newset"></div>
+    </div>
+    <div class="stats" id="stats"></div>
+  </section>
+
+  <section class="card params" id="pParams">
+    <div class="pgroup">
+      <h3>Orden de movimiento u<sub>t</sub></h3>
+      <p>Lo que reporta la odometría en el siguiente ciclo. El robot real la ejecuta con un ruido muy pequeño.</p>
+      <div class="rowsel"><label for="umode">Origen</label>
+        <select id="umode"><option value="auto">Ruta automática (≤ 1 m hacia el siguiente punto)</option><option value="manual">Manual: escribo δrot1, δtrans y δrot2</option></select></div>
+      <div class="ugrid" id="ugrid" hidden>
+        <label for="ur1">δ<sub>rot1</sub> (°)<input type="number" id="ur1" value="0" step="5" min="-180" max="180"></label>
+        <label for="ut">δ<sub>trans</sub> (m)<input type="number" id="ut" value="1" step="0.1" min="0" max="5"></label>
+        <label for="ur2">δ<sub>rot2</sub> (°)<input type="number" id="ur2" value="0" step="5" min="-180" max="180"></label>
+      </div>
+      <p class="note" id="uhint" hidden>Se aplica al pulsar Paso al inicio del siguiente ciclo. Si el robot real chocaría con una pared, solo gira, pero la odometría sigue diciendo que avanzó.</p>
+    </div>
+    <div class="pgroup">
+      <h3>Modelo de movimiento</h3>
+      <p>Odometría u<sub>t</sub> = (δ<sub>rot1</sub>, δ<sub>trans</sub>, δ<sub>rot2</sub>). Ruido muestreado con varianza α·δ².</p>
+      <div class="row"><label for="a1">α1 · rotación → rotación</label><output id="oa1"></output><input type="range" id="a1" min="0" max="0.3" step="0.005" value="0.03"></div>
+      <div class="row"><label for="a2">α2 · traslación → rotación</label><output id="oa2"></output><input type="range" id="a2" min="0" max="0.3" step="0.005" value="0.02"></div>
+      <div class="row"><label for="a3">α3 · traslación → traslación</label><output id="oa3"></output><input type="range" id="a3" min="0" max="0.3" step="0.005" value="0.04"></div>
+      <div class="row"><label for="a4">α4 · rotación → traslación</label><output id="oa4"></output><input type="range" id="a4" min="0" max="0.3" step="0.005" value="0.01"></div>
+    </div>
+    <div class="pgroup">
+      <h3>Modelo del sensor</h3>
+      <div class="rowsel"><label for="model">Modelo</label>
+        <select id="model"><option value="beam">Beam (compara z con z esperada a lo largo del rayo)</option><option value="lf">Likelihood field (distancia del extremo del rayo al obstáculo)</option></select></div>
+      <p id="sensorHint">Pesos de la mezcla (se normalizan), σ<sub>hit</sub> y λ<sub>short</sub>. z<sub>max</sub> = 8 m.</p>
+      <div class="row"><label for="zh">z<sub>hit</sub></label><output id="ozh"></output><input type="range" id="zh" min="0" max="1" step="0.01" value="0.7"></div>
+      <div class="row" id="rowZs"><label for="zs">z<sub>short</sub></label><output id="ozs"></output><input type="range" id="zs" min="0" max="1" step="0.01" value="0.1"></div>
+      <div class="row" id="rowZm"><label for="zm">z<sub>max</sub> (peso)</label><output id="ozm"></output><input type="range" id="zm" min="0" max="1" step="0.01" value="0.05"></div>
+      <div class="row"><label for="zr">z<sub>rand</sub></label><output id="ozr"></output><input type="range" id="zr" min="0" max="1" step="0.01" value="0.15"></div>
+      <div class="row"><label for="sig">σ<sub>hit</sub> (m)</label><output id="osig"></output><input type="range" id="sig" min="0.05" max="1.5" step="0.01" value="0.3"></div>
+      <div class="row" id="rowLam"><label for="lam">λ<sub>short</sub> (1/m)</label><output id="olam"></output><input type="range" id="lam" min="0.05" max="3" step="0.05" value="0.6"></div>
+    </div>
+    <div class="pgroup">
+      <h3>Filtro</h3>
+      <p>Cambiar M o la inicialización reinicia la demo.</p>
+      <div class="row"><label for="M">Número de partículas M</label><output id="oM"></output><input type="range" id="M" min="3" max="40" step="1" value="8"></div>
+      <div class="rowsel"><label for="init">Inicialización</label>
+        <select id="init"><option value="local">Alrededor de una estimación inicial</option><option value="global">Uniforme por todo el mapa (localización global)</option></select></div>
+      <div class="rowsel"><label for="sampler">Resampling</label>
+        <select id="sampler"><option value="multi">Multinomial (M sorteos independientes)</option><option value="lowvar">Baja varianza / sistemático (peine)</option></select></div>
+      <div class="row"><label for="inj">Partículas aleatorias inyectadas</label><output id="oinj"></output><input type="range" id="inj" min="0" max="0.4" step="0.05" value="0"></div>
+      <div class="btnrow"><button id="bKidnap">Secuestrar robot</button></div>
+    </div>
+  </section>
+
+  <section class="card tablecard" id="pTable">
+    <div class="head"><h2>Partículas</h2><span class="sub">x, y en m · θ en grados</span></div>
+    <div class="tscroll"><table>
+      <thead><tr><th>m</th><th>x</th><th>y</th><th>θ</th><th id="thMeas">z<sub>exp</sub></th><th>p(z|x)</th><th>w norm.</th></tr></thead>
+      <tbody id="tbody"></tbody>
+    </table></div>
+  </section>
+</main>
+</div>
+
+<script>
+(()=>{
+const $=s=>document.querySelector(s);
+const TAU=Math.PI*2, W=12, H=7, ZMAX=8, DMAX=0.15, SQ2=Math.SQRT2;
+const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+// ---------- mundo ----------
+const rects=[[2.5,4.5,4,6],[5,1,6.5,2.2],[10.5,5.2,11.3,6.2]];
+const diag=[8.2,4.6,9.6,2.4];
+const segs=[];
+const addRect=(a,b,c,d)=>segs.push([a,b,c,b],[c,b,c,d],[c,d,a,d],[a,d,a,b]);
+addRect(0,0,W,H); rects.forEach(r=>addRect(...r)); segs.push(diag);
+const WPS=[[1.5,1.5],[4.2,3.2],[7.2,3.0],[7.6,5.8],[4.8,6.3],[1.3,6.3],[1.2,3.4]];
+
+const normA=a=>{while(a>Math.PI)a-=TAU;while(a<-Math.PI)a+=TAU;return a};
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+function randn(){let u=0,v=0;while(!u)u=Math.random();while(!v)v=Math.random();return Math.sqrt(-2*Math.log(u))*Math.cos(TAU*v)}
+function erf(x){const s=Math.sign(x);x=Math.abs(x);const t=1/(1+0.3275911*x);
+  return s*(1-(((((1.061405429*t-1.453152027)*t)+1.421413741)*t-0.284496736)*t+0.254829592)*t*Math.exp(-x*x))}
+function raycast(x,y,th){const dx=Math.cos(th),dy=Math.sin(th);let best=ZMAX;
+  for(const [x1,y1,x2,y2] of segs){const ex=x2-x1,ey=y2-y1,den=dx*ey-dy*ex;if(Math.abs(den)<1e-12)continue;
+    const t=((x1-x)*ey-(y1-y)*ex)/den, s=(dy*(x1-x)-dx*(y1-y))/den;
+    if(t>1e-6&&s>=0&&s<=1&&t<best)best=t}
+  return best}
+function distSeg(px,py,x1,y1,x2,y2){const ex=x2-x1,ey=y2-y1;const t=clamp(((px-x1)*ex+(py-y1)*ey)/(ex*ex+ey*ey),0,1);return Math.hypot(px-x1-t*ex,py-y1-t*ey)}
+function isFree(x,y,m=0.3){if(x<m||y<m||x>W-m||y>H-m)return false;
+  for(const [a,b,c,d] of rects)if(x>a-m&&x<c+m&&y>b-m&&y<d+m)return false;
+  return distSeg(x,y,...diag)>=m}
+function randomFree(){let x,y;do{x=Math.random()*W;y=Math.random()*H}while(!isFree(x,y));return{x,y,th:normA(Math.random()*TAU)}}
+
+// ---------- parámetros ----------
+const P={};
+const num=id=>parseFloat($('#'+id).value);
+function readParams(){
+  P.a=[num('a1'),num('a2'),num('a3'),num('a4')];
+  P.wHit=num('zh');P.wShort=num('zs');P.wMax=num('zm');P.wRand=num('zr');P.sigma=num('sig');P.lambda=num('lam');
+  P.M=parseInt($('#M').value);P.init=$('#init').value;P.sampler=$('#sampler').value;P.inj=num('inj');
+  P.umode=$('#umode').value;P.model=$('#model').value;
+  P.uman={r1:(parseFloat($('#ur1').value)||0)*Math.PI/180,t:clamp(parseFloat($('#ut').value)||0,0,5),r2:(parseFloat($('#ur2').value)||0)*Math.PI/180};
+  $('#ugrid').hidden=$('#uhint').hidden=P.umode!=='manual';
+  const lf=P.model==='lf';$('#rowZs').hidden=$('#rowZm').hidden=$('#rowLam').hidden=lf;
+  $('#sensorHint').innerHTML=lf?'Solo z<sub>hit</sub> (gaussiana sobre la distancia d), z<sub>rand</sub> y σ<sub>hit</sub>. Las lecturas máximas se descartan.':'Pesos de la mezcla (se normalizan), σ<sub>hit</sub> y λ<sub>short</sub>. z<sub>max</sub> = 8 m.';
+  $('#sensorTitle').innerHTML=lf?'Modelo del sensor <i>likelihood field</i>':'Modelo del sensor <i>beam</i>';
+  $('#thMeas').innerHTML=lf?'d':'z<sub>exp</sub>';
+  $('#lgExp').innerHTML=lf?'distancia d del extremo al obstáculo':'rayo esperado z<sub>exp</sub> de la partícula';
+  P.detail=$('#detail').checked;P.showRobot=$('#showRobot').checked;P.speed=num('speed');
+  const sw=(lf?P.wHit+P.wRand:P.wHit+P.wShort+P.wMax+P.wRand)||1;
+  const pct=v=>' ('+Math.round(100*v/sw)+'%)';
+  $('#oa1').textContent=P.a[0].toFixed(3);$('#oa2').textContent=P.a[1].toFixed(3);$('#oa3').textContent=P.a[2].toFixed(3);$('#oa4').textContent=P.a[3].toFixed(3);
+  $('#ozh').textContent=P.wHit.toFixed(2)+pct(P.wHit);$('#ozs').textContent=P.wShort.toFixed(2)+pct(P.wShort);
+  $('#ozm').textContent=P.wMax.toFixed(2)+pct(P.wMax);$('#ozr').textContent=P.wRand.toFixed(2)+pct(P.wRand);
+  $('#osig').textContent=P.sigma.toFixed(2);$('#olam').textContent=P.lambda.toFixed(2);
+  $('#oM').textContent=P.M;$('#oinj').textContent=Math.round(P.inj*100)+'%';
+  $('#resWho').textContent=P.sampler==='multi'?'Multinomial, con reemplazo':'Baja varianza, con reemplazo';
+}
+
+// ---------- modelos ----------
+function beamParts(z,zexp){
+  let hit=0,short=0,max=0,rand=0;
+  if(z>=0&&z<=ZMAX){const s=P.sigma;const eta=0.5*(erf((ZMAX-zexp)/(s*SQ2))-erf((0-zexp)/(s*SQ2)));
+    hit=Math.exp(-0.5*((z-zexp)/s)**2)/(s*Math.sqrt(TAU))/Math.max(eta,1e-9)}
+  if(z>=0&&z<=zexp&&zexp>1e-3)short=P.lambda*Math.exp(-P.lambda*z)/(1-Math.exp(-P.lambda*zexp));
+  if(z>=ZMAX-DMAX)max=1/DMAX;
+  if(z>=0&&z<ZMAX)rand=1/ZMAX;
+  return{hit,short,max,rand}}
+function beamP(z,zexp){const c=beamParts(z,zexp);const sw=P.wHit+P.wShort+P.wMax+P.wRand;if(sw<=0)return 0;
+  return(P.wHit*c.hit+P.wShort*c.short+P.wMax*c.max+P.wRand*c.rand)/sw}
+// likelihood field: distancia del punto al obstáculo más cercano (0 si está dentro de un obstáculo o fuera del mapa)
+function nearest(px,py){
+  if(px<=0||py<=0||px>=W||py>=H)return{d:0,qx:px,qy:py};
+  for(const [a,b,c,d] of rects)if(px>=a&&px<=c&&py>=b&&py<=d)return{d:0,qx:px,qy:py};
+  let best={d:Infinity,qx:px,qy:py};
+  for(const [x1,y1,x2,y2] of segs){const ex=x2-x1,ey=y2-y1;const t=clamp(((px-x1)*ex+(py-y1)*ey)/(ex*ex+ey*ey),0,1);
+    const qx=x1+t*ex,qy=y1+t*ey,dd=Math.hypot(px-qx,py-qy);if(dd<best.d)best={d:dd,qx,qy}}
+  return best}
+const gauss0=(d,s)=>Math.exp(-0.5*(d/s)**2)/(s*Math.sqrt(TAU));
+function lfP(z,d){if(z>=ZMAX)return 1;const sw=P.wHit+P.wRand;if(sw<=0)return 0;return(P.wHit*gauss0(d,P.sigma)+P.wRand/ZMAX)/sw}
+function sampleHat(u,a){return{
+  r1:u.r1-randn()*Math.sqrt(a[0]*u.r1*u.r1+a[1]*u.t*u.t),
+  t:u.t-randn()*Math.sqrt(a[2]*u.t*u.t+a[3]*(u.r1*u.r1+u.r2*u.r2)),
+  r2:u.r2-randn()*Math.sqrt(a[0]*u.r2*u.r2+a[1]*u.t*u.t)}}
+function applyHat(p,h){return{x:p.x+h.t*Math.cos(p.th+h.r1),y:p.y+h.t*Math.sin(p.th+h.r1),th:normA(p.th+h.r1+h.r2)}}
+function poseAt(p,h,f){const a=clamp(f/0.3,0,1),b=clamp((f-0.3)/0.5,0,1),c=clamp((f-0.8)/0.2,0,1);
+  const ease=v=>v<.5?2*v*v:1-2*(1-v)*(1-v);
+  const th1=p.th+h.r1*ease(a);const d=h.t*ease(b);
+  return{x:p.x+d*Math.cos(p.th+h.r1),y:p.y+d*Math.sin(p.th+h.r1),th:th1+h.r2*ease(c)}}
+
+// ---------- estado ----------
+let S;
+const hue=i=>(i*137.508+14)%360;
+function pcol(h,a=1){const cs=getComputedStyle(document.documentElement);
+  return `hsla(${h},${cs.getPropertyValue('--ps').trim()},${cs.getPropertyValue('--pl').trim()},${a})`}
+function newParticle(pose,i){return{x:pose.x,y:pose.y,th:pose.th,w:null,zexp:null,wn:null,hue:hue(i),from:null,hat:null,parent:null,injected:false,group:1}}
+function reset(){
+  stop();readParams();
+  const robot={x:1.5,y:1.5,th:0.56};
+  S={t:0,robot,robotFrom:null,robotHat:null,wp:1,hist:[{x:robot.x,y:robot.y}],particles:[],queue:[],cur:{t:'init'},
+     u:null,z:null,wn:null,neff:null,draws:[],counts:[],r0:0,selected:0,anim:null,est:null};
+  for(let i=0;i<P.M;i++){let pose;
+    if(P.init==='local'){let k=0;do{pose={x:robot.x+0.2+randn()*0.55,y:robot.y-0.1+randn()*0.55,th:normA(robot.th+randn()*0.35)};k++}while(!isFree(pose.x,pose.y,0.15)&&k<50)}
+    else pose=randomFree();
+    S.particles.push(newParticle(pose,i))}
+  resetHist();updateUI();}
+
+function buildCycle(){
+  const q=[{t:'input'},{t:'move'}];
+  if(P.detail)for(let k=0;k<P.M;k++)q.push({t:'weigh',k});else q.push({t:'weighAll'});
+  q.push({t:'resampleStart'});
+  if(P.detail)for(let k=0;k<P.M;k++)q.push({t:'draw',k});else q.push({t:'drawAll'});
+  q.push({t:'commit'});S.queue=q;}
+
+function robotCommand(){
+  if(P.umode==='manual')return{...P.uman};
+  const r=S.robot;let [wx,wy]=WPS[S.wp];let d=Math.hypot(wx-r.x,wy-r.y);
+  if(d<0.15){S.wp=(S.wp+1)%WPS.length;[wx,wy]=WPS[S.wp];d=Math.hypot(wx-r.x,wy-r.y)}
+  const r1=normA(Math.atan2(wy-r.y,wx-r.x)-r.th);const t=Math.min(d,1.0);
+  if(d<=1.0)S.wp=(S.wp+1)%WPS.length;
+  return{r1,t,r2:0}}
+
+function weigh(k){const p=S.particles[k];p.zexp=raycast(p.x,p.y,p.th);
+  if(P.model==='lf'){if(S.z>=ZMAX){p.d=null;p.near=null}else{p.near=nearest(p.x+S.z*Math.cos(p.th),p.y+S.z*Math.sin(p.th));p.d=p.near.d}p.w=lfP(S.z,p.d)}
+  else{p.d=null;p.near=null;p.w=beamP(S.z,p.zexp)}}
+function normalize(){
+  let sum=S.particles.reduce((s,p)=>s+p.w,0);S.allZero=sum<=0;
+  S.particles.forEach(p=>p.wn=sum>0?p.w/sum:1/S.particles.length);
+  S.neff=1/S.particles.reduce((s,p)=>s+p.wn*p.wn,0);
+  S.cum=[];let c=0;S.particles.forEach(p=>{c+=p.wn;S.cum.push(c)});S.cum[S.cum.length-1]=1;}
+function pick(r){for(let i=0;i<S.cum.length;i++)if(r<S.cum[i])return i;return S.cum.length-1}
+function doDraw(k){const M=S.particles.length;const r=P.sampler==='multi'?Math.random():S.r0+k/M;
+  const i=pick(r);S.draws.push({r,i});S.counts[i]++;return S.draws[S.draws.length-1]}
+
+const DUR={input:1300,move:1500,weigh:1100,weighAll:1400,resampleStart:1600,draw:750,drawAll:1500,commit:1400};
+function exec(st,instant){
+  const now=performance.now(),sp=P.speed;const dur=v=>instant||reduced?0:v/sp;
+  switch(st.t){
+  case'input':{
+    S.t++;S.u=robotCommand();
+    S.robotFrom={...S.robot};S.robotHat=sampleHat(S.u,[0.002,0.001,0.002,0.001]);
+    S.robot=applyHat(S.robotFrom,S.robotHat);
+    if(!isFree(S.robot.x,S.robot.y,0.12)){S.robot={...S.robotFrom,th:normA(S.robotFrom.th+S.robotHat.r1)};S.robotHat={r1:S.robotHat.r1,t:0,r2:0};S.bumped=true}else S.bumped=false;
+    S.hist.push({x:S.robot.x,y:S.robot.y});if(S.hist.length>40)S.hist.shift();
+    const zt=raycast(S.robot.x,S.robot.y,S.robot.th);
+    S.z=zt>=ZMAX?ZMAX:clamp(zt+randn()*0.07,0,ZMAX);
+    S.particles.forEach(p=>{p.w=null;p.wn=null;p.zexp=null;p.d=null;p.near=null;p.from=null;p.hat=null});
+    S.wn=null;S.neff=null;S.draws=[];S.counts=[];S.est=null;
+    S.anim={kind:'robot',start:now,dur:dur(900)};break}
+  case'move':
+    S.particles.forEach(p=>{p.from={x:p.x,y:p.y,th:p.th};p.hat=sampleHat(S.u,P.a);Object.assign(p,applyHat(p.from,p.hat));p.group=1;p.injected=false});
+    S.anim={kind:'move',start:now,dur:dur(1100)};break;
+  case'weigh':weigh(st.k);S.selected=st.k;break;
+  case'weighAll':S.particles.forEach((p,k)=>weigh(k));break;
+  case'resampleStart':normalize();S.draws=[];S.counts=S.particles.map(()=>0);S.r0=Math.random()/S.particles.length;S.est=estimate(true);break;
+  case'draw':st.res=doDraw(st.k);S.selected=st.res.i;break;
+  case'drawAll':while(S.draws.length<S.particles.length)doDraw(S.draws.length);break;
+  case'commit':{
+    const old=S.particles;const M=old.length;const np=S.draws.map((d,j)=>{const o=old[d.i];const q=newParticle(o,j);q.parent=d.i;q.parentHue=o.hue;return q});
+    const nInj=Math.round(P.inj*M);S.injected=nInj;
+    if(nInj>0){const idx=[...Array(M).keys()].sort(()=>Math.random()-.5).slice(0,nInj);
+      idx.forEach(j=>{const q=newParticle(randomFree(),j);q.injected=true;np[j]=q})}
+    const g={};np.forEach(q=>{if(q.parent!=null&&!q.injected)g[q.parent]=(g[q.parent]||0)+1});
+    np.forEach(q=>q.group=q.injected?1:(g[q.parent]||1));
+    S.lastCounts=g;S.particles=np;S.selected=0;S.est=estimate(false);break}
+  }}
+
+function estimate(weighted){const ps=S.particles;let x=0,y=0,c=0,s=0;
+  ps.forEach(p=>{const w=weighted&&p.wn!=null?p.wn:1/ps.length;x+=w*p.x;y+=w*p.y;c+=w*Math.cos(p.th);s+=w*Math.sin(p.th)});
+  return{x,y,th:Math.atan2(s,c)}}
+
+// ---------- control ----------
+let playing=false,timer=null;
+function finishAnim(){S.anim=null}
+// historial: estado tras cada paso. Atrás restaura; Paso rehace el mismo resultado si no se ha cambiado nada.
+let hist=[],hpos=-1;
+function snap(){const c=structuredClone(S);c.anim=null;return c}
+function resetHist(){hist=[snap()];hpos=0}
+function dropFuture(){if(hist.length){hist.length=hpos+1;hist[hpos]=snap()}}
+function restartAnim(instant){const sp=P.speed,now=performance.now();if(instant||reduced){S.anim=null;return}
+  if(S.cur.t==='input'&&S.robotFrom)S.anim={kind:'robot',start:now,dur:900/sp};
+  else if(S.cur.t==='move')S.anim={kind:'move',start:now,dur:1100/sp};else S.anim=null}
+function stepOnce(instant=false){finishAnim();
+  if(hpos<hist.length-1){hpos++;S=structuredClone(hist[hpos]);restartAnim(instant);updateUI();return S.cur}
+  if(!S.queue.length)buildCycle();const st=S.queue.shift();S.cur=st;exec(st,instant);
+  hist.push(snap());hpos++;if(hist.length>600){hist.shift();hpos--}
+  updateUI();return st}
+function back(){stop();if(hpos<=0)return;hpos--;S=structuredClone(hist[hpos]);S.anim=null;updateUI()}
+function repeat(){stop();
+  if(S.cur.t==='draw'||S.cur.t==='weigh'){back();stepOnce(false);return}
+  restartAnim(false)}
+function runCycle(){stop();if(!S.queue.length)buildCycle();while(S.queue.length)stepOnce(true)}
+function tick(){if(!playing)return;const st=stepOnce(false);timer=setTimeout(tick,DUR[st.t]/P.speed)}
+function play(){if(playing){stop();return}playing=true;$('#bPlay').textContent='Pausa';tick()}
+function stop(){playing=false;clearTimeout(timer);const b=$('#bPlay');if(b)b.textContent='Reproducir'}
+
+// ---------- UI textual ----------
+const f2=v=>v==null?'—':v.toFixed(2), deg=r=>Math.round(r*180/Math.PI);
+const fw=v=>v==null?'—':(v<0.001&&v>0?v.toExponential(1):v.toFixed(3));
+const LINES={init:[],input:[0,1],move:[2,3],weigh:[5,6,7],weighAll:[5,6,7],resampleStart:[9],draw:[9,10,11],drawAll:[9,10,11],commit:[13]};
+const PHASE={init:'Inicialización',input:'Entradas del ciclo',move:'Fase 1 · modelo de movimiento',weigh:'Fase 2 · modelo del sensor',weighAll:'Fase 2 · modelo del sensor',resampleStart:'Fase 3 · resampling',draw:'Fase 3 · resampling',drawAll:'Fase 3 · resampling',commit:'Fin del ciclo'};
+
+function explainText(){
+  const st=S.cur,M=S.particles.length;
+  switch(st.t){
+  case'init':return P.init==='local'
+    ?`Se crean <b>M = ${M}</b> partículas alrededor de una estimación inicial. Cada partícula es una hipótesis completa (x, y, θ) sobre dónde puede estar el robot. Pulsa <b>Paso</b> para empezar el primer ciclo.`
+    :`Se crean <b>M = ${M}</b> partículas repartidas uniformemente por el espacio libre: el robot no sabe dónde está (localización global). Con tan pocas partículas lo normal es que ninguna caiga cerca y el filtro no converja; prueba a subir M.`;
+  case'input':return`Ciclo <b>t = ${S.t}</b>. El robot ejecuta la orden u<sub>t</sub> (girar ${deg(S.u.r1)}°, avanzar ${S.u.t.toFixed(2)} m, girar ${deg(S.u.r2)}°) y el láser frontal a 0° devuelve <b>z<sub>t</sub> = ${S.z.toFixed(2)} m</b>${S.z>=ZMAX?' (lectura máxima: no ha encontrado obstáculo)':''}. El filtro solo recibe estos números y el mapa; <b>nunca conoce la pose real</b>.${S.bumped?' <b>El robot real ha chocado</b> y solo ha girado, pero la odometría dice que avanzó: las partículas sí avanzarán.':''}${P.showRobot?' El robot dibujado es solo para nosotros: ocúltalo para ver lo mismo que ve el algoritmo.':''}`;
+  case'move':return`Cada partícula aplica u<sub>t</sub> como si fuera el robot, pero con ruido muestreado de p(x<sub>t</sub> | u<sub>t</sub>, x<sub>t−1</sub>): se perturban δ<sub>rot1</sub>, δ<sub>trans</sub> y δ<sub>rot2</sub> por separado. Por eso partículas que estaban juntas se dispersan. Sube α1–α4 para ver más dispersión.`;
+  case'weigh':{const p=S.particles[st.k];
+    if(P.model==='lf')return p.d==null
+      ?`Partícula <b>${st.k+1}</b>. La medida es una lectura máxima (z = z<sub>max</sub>): el modelo likelihood field la descarta, así que no aporta información y el peso es igual para todas.`
+      :`Partícula <b>${st.k+1}</b>. Se proyecta la medida z = ${S.z.toFixed(2)} m desde la pose de la partícula (ámbar) y se mira a qué distancia queda su extremo del obstáculo más cercano: <b>d = ${p.d.toFixed(2)} m</b> (discontinua). Peso = z<sub>hit</sub>·N(d; 0, σ) + z<sub>rand</sub>/z<sub>max</sub> = <b>${fw(p.w)}</b>. No hace falta trazar el rayo esperado: solo se consulta un mapa de distancias.`;
+    return`Partícula <b>${st.k+1}</b>. Si el robot estuviera en esta pose, el rayo a 0° chocaría a <b>z<sub>exp</sub> = ${p.zexp.toFixed(2)} m</b> (discontinua). La medida real es <b>z = ${S.z.toFixed(2)} m</b> (ámbar, trazada desde la partícula). El modelo beam da <b>p(z | x, m) = ${fw(p.w)}</b>, que se guarda como su peso. Cuanto más se parecen z y z<sub>exp</sub>, más peso.`}
+  case'weighAll':return`Se calcula el peso de todas las partículas con el modelo ${P.model==='lf'?'likelihood field':'beam'}. El tamaño y la opacidad de cada flecha indican el peso. Pincha una partícula para ver su ${P.model==='lf'?'distancia d':'z<sub>exp</sub>'} y su curva en el modelo del sensor.`;
+  case'resampleStart':return`Se normalizan los pesos para que sumen 1 y cada partícula ocupa en la barra un tramo proporcional a su peso. ${P.sampler==='multi'
+    ?`Se harán <b>${M} sorteos</b> independientes de un número r ∈ [0, 1); la partícula en cuyo tramo cae r se copia al nuevo conjunto.`
+    :`Con el muestreo de baja varianza solo se sortea <b>un</b> número r<sub>0</sub> ∈ [0, 1/${M}) y las ${M} marcas van separadas 1/${M}, como un peine.`} Es un muestreo <b>con reemplazo</b>: la partícula elegida no sale de la urna, así que puede salir varias veces.${S.allZero?' (Todos los pesos eran 0, así que se usan pesos uniformes.)':''}`;
+  case'draw':{const d=st.res;const n=S.counts[d.i];return`Sorteo <b>${st.k+1} de ${M}</b>: r = ${d.r.toFixed(3)} cae en el tramo de la partícula <b>${d.i+1}</b> (peso ${d.i>=0?S.particles[d.i].wn.toFixed(3):''}) → se añade una copia de x<sub>t</sub><sup>[${d.i+1}]</sup> a X<sub>t</sub>.${n>1?` Es la <b>${n}ª vez</b> que sale: eso es el reemplazo.`:''}`}
+  case'drawAll':{const lost=S.counts.filter(c=>c===0).length;return`Hechos los ${M} sorteos. Las partículas con más peso salen varias veces (×n en el mapa y en la barra); ${lost} partícula${lost===1?'':'s'} no ha${lost===1?'':'n'} salido y desaparece${lost===1?'':'n'}.`}
+  case'commit':return`El nuevo conjunto X<sub>t</sub> sustituye al anterior y <b>se olvidan los pesos</b>: todas vuelven a valer lo mismo. Las copias están exactamente en la misma pose (×n) y se separarán en la siguiente fase de movimiento gracias al ruido.${S.injected?` Además se han sustituido ${S.injected} partícula${S.injected>1?'s':''} por poses aleatorias (anillo), para poder recuperarse de un secuestro.`:''} Siguiente paso: vuelta a la fase 1.`;
+  }}
+
+function updateUI(){
+  const st=S.cur,M=S.particles.length;
+  $('#cT').textContent='t = '+S.t;
+  $('#cU').innerHTML=S.u?`u<sub>t</sub> = (${deg(S.u.r1)}°, ${S.u.t.toFixed(2)} m, ${deg(S.u.r2)}°)`:'u<sub>t</sub> = —';
+  $('#cZ').innerHTML=S.z!=null?`z<sub>t</sub> = ${S.z.toFixed(2)} m`:'z<sub>t</sub> = —';
+  document.querySelectorAll('.ln').forEach(el=>el.classList.toggle('on',(LINES[st.t]||[]).includes(+el.dataset.l)));
+  $('#m1').textContent=st.t==='move'?'← todas a la vez':'';
+  $('#m2').textContent=st.t==='weigh'?`← m = ${st.k+1}`:(st.t==='weighAll'?'← todas':'');
+  $('#m3').textContent=st.t==='draw'?`← m = ${st.k+1}`:(st.t==='drawAll'?'← todas':'');
+  $('#bBack').disabled=hpos<=0;$('#bRepeat').disabled=!['input','move','draw','weigh'].includes(st.t);
+  $('#phase').textContent=PHASE[st.t];$('#algoPhase').textContent=PHASE[st.t];
+  $('#explain').innerHTML=explainText();
+  applyPanels();buildBar();buildTable();drawBeam();
+}
+const PHASE_OK={pSensor:['input','weigh','weighAll'],pResample:['resampleStart','draw','drawAll','commit']};
+function applyPanels(){
+  const auto=$('#autoPanels').checked,t=S?S.cur.t:'init';
+  document.querySelectorAll('#panels input[data-p]').forEach(cb=>{const id=cb.dataset.p;
+    $('#'+id).hidden=!(cb.checked&&(!auto||!PHASE_OK[id]||PHASE_OK[id].includes(t)))});
+  $('.mapcol').classList.toggle('full',$('#pAlgo').hidden);
+  const low=['pSensor','pResample','pParams','pTable'].map(id=>$('#'+id));low.forEach(el=>el.classList.remove('full'));
+  const vis=low.filter(el=>!el.hidden);if(vis.length%2)vis[vis.length-1].classList.add('full');
+}
+function savePanels(){try{const o={auto:$('#autoPanels').checked};document.querySelectorAll('#panels input[data-p]').forEach(cb=>o[cb.dataset.p]=cb.checked);localStorage.setItem('pf-panels',JSON.stringify(o))}catch(e){}}
+try{const o=JSON.parse(localStorage.getItem('pf-panels')||'null');if(o){document.querySelectorAll('#panels input[data-p]').forEach(cb=>{if(o[cb.dataset.p]!=null)cb.checked=o[cb.dataset.p]});$('#autoPanels').checked=!!o.auto}}catch(e){}
+$('#panels').addEventListener('change',()=>{savePanels();applyPanels();drawBeam()});
+
+function buildBar(){
+  const area=$('#barArea'),ps=S.particles,M=ps.length;
+  const phaseRes=['resampleStart','draw','drawAll'].includes(S.cur.t);
+  const allW=ps.every(p=>p.w!=null);
+  if(!phaseRes&&!allW){
+    area.innerHTML=`<div class="placeholder">${S.cur.t==='commit'?'Resampling hecho. El nuevo conjunto tiene pesos iguales; la barra vuelve a aparecer cuando se pesen las partículas.':'Las partículas aún no tienen peso. Cuando se hayan pesado todas, aquí se verá cómo se reparten la barra [0, 1).'}</div>`;
+    $('#newset').innerHTML=S.cur.t==='commit'?chipsFromCommit():'<span class="sub">—</span>';
+    $('#stats').innerHTML='';return}
+  let wn;
+  if(phaseRes)wn=ps.map(p=>p.wn);else{const s=ps.reduce((a,p)=>a+p.w,0);wn=ps.map(p=>s>0?p.w/s:1/M)}
+  let html='<div class="barbox"><div class="ruler">';
+  ps.forEach((p,i)=>{const c=phaseRes?S.counts[i]:0;const hit=S.cur.t==='draw'&&S.cur.res&&S.cur.res.i===i;
+    html+=`<div class="seg${hit?' hit':''}" style="flex:0 0 ${(wn[i]*100).toFixed(3)}%;background:${pcol(p.hue)}" title="partícula ${i+1}: ${wn[i].toFixed(3)}">${wn[i]>0.045?i+1:''}${c?`<span class="cnt">×${c}</span>`:''}</div>`});
+  html+='</div>';
+  if(phaseRes){
+    const show=S.cur.t==='resampleStart'&&P.sampler==='lowvar'?[...Array(M).keys()].map(k=>({r:S.r0+k/M,ghost:true})):S.draws;
+    show.forEach((d,j)=>{const last=S.cur.t==='draw'&&j===S.draws.length-1;
+      const lbl=last||(S.cur.t==='drawAll'&&M<=10)?`<span>${d.r.toFixed(2)}</span>`:'';
+      html+=`<div class="mk${last?' drop':''}${(S.cur.t==='draw'&&!last)||d.ghost?' old':''}" style="left:${(d.r*100).toFixed(3)}%">${lbl}</div>`});
+  }
+  html+='</div><div class="ticks"><span>0</span><span>0.25</span><span>0.5</span><span>0.75</span><span>1</span></div>';
+  area.innerHTML=html;
+  $('#newset').innerHTML=phaseRes&&S.draws.length?S.draws.map(d=>`<span class="pchip" style="background:${pcol(ps[d.i].hue)}">${d.i+1}</span>`).join(''):'<span class="sub">vacío: X<sub>t</sub> = ∅</span>';
+  const neff=phaseRes?S.neff:1/wn.reduce((a,v)=>a+v*v,0);
+  $('#stats').innerHTML=`<span>N<sub>eff</sub> = 1/Σw² = <b>${neff.toFixed(2)}</b> de ${M}</span><span>peso máx. = <b>${Math.max(...wn).toFixed(3)}</b></span>${phaseRes?`<span>sorteos: <b>${S.draws.length}/${M}</b></span>`:''}`;
+}
+function chipsFromCommit(){return S.particles.map(q=>`<span class="pchip" style="background:${q.injected?'var(--muted)':pcol(q.parentHue)}">${q.injected?'?':q.parent+1}</span>`).join('')+'<span class="sub" style="margin-left:6px">(número = partícula de origen; se renumeran 1…M)</span>'}
+
+function buildTable(){
+  const ps=S.particles;const maxw=Math.max(...ps.map(p=>p.wn||0),1e-9);
+  $('#tbody').innerHTML=ps.map((p,i)=>`<tr data-i="${i}" class="${i===S.selected?'sel':''}"><td><span class="dot" style="background:${pcol(p.hue)}"></span>${i+1}${p.group>1?` <span style="color:var(--muted)">×${p.group}</span>`:''}${p.injected?' <span style="color:var(--muted)">aleat.</span>':''}</td><td>${f2(p.x)}</td><td>${f2(p.y)}</td><td>${deg(p.th)}</td><td>${P.model==='lf'?f2(p.d):f2(p.zexp)}</td><td>${fw(p.w)}</td><td>${p.wn==null?'—':p.wn.toFixed(3)+`<span class="wbar" style="width:${Math.round(40*p.wn/maxw)}px"></span>`}</td></tr>`).join('');
+}
+$('#tbody').addEventListener('click',e=>{const tr=e.target.closest('tr');if(!tr)return;S.selected=+tr.dataset.i;updateUI()});
+
+// ---------- dibujo ----------
+const cv=$('#map'),ctx=cv.getContext('2d');const bc=$('#beam'),bctx=bc.getContext('2d');
+let view={s:50,px:22,py:10,w:600,h:350};
+function css(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim()}
+function sizeCanvas(){const w=cv.parentElement.clientWidth;const px=22,py=10;const s=(w-px-8)/W;const h=Math.round(s*H+py+22);
+  const dpr=window.devicePixelRatio||1;cv.width=Math.round(w*dpr);cv.height=Math.round(h*dpr);cv.style.height=h+'px';ctx.setTransform(dpr,0,0,dpr,0,0);
+  view={s,px,py,w,h};
+  const bw=bc.clientWidth,bh=bc.clientHeight;bc.width=Math.round(bw*dpr);bc.height=Math.round(bh*dpr);bctx.setTransform(dpr,0,0,dpr,0,0);drawBeam()}
+const X=x=>view.px+x*view.s, Y=y=>view.py+(H-y)*view.s;
+
+function displayPose(p){if(S.anim&&S.anim.kind==='move'&&p.from&&p.hat){const f=clamp((performance.now()-S.anim.start)/(S.anim.dur||1),0,1);return poseAt(p.from,p.hat,f)}return p}
+function robotPose(){if(S.anim&&S.anim.kind==='robot'&&S.robotFrom){const f=clamp((performance.now()-S.anim.start)/(S.anim.dur||1),0,1);return poseAt(S.robotFrom,S.robotHat,f)}return S.robot}
+function arrow(x,y,th,len,col,lw){const sx=X(x),sy=Y(y),ex=sx+len*Math.cos(-th),ey=sy+len*Math.sin(-th);
+  ctx.strokeStyle=col;ctx.fillStyle=col;ctx.lineWidth=lw;ctx.beginPath();ctx.moveTo(sx,sy);ctx.lineTo(ex,ey);ctx.stroke();
+  const hl=Math.max(5,len*0.38),a=-th;ctx.beginPath();ctx.moveTo(ex,ey);ctx.lineTo(ex-hl*Math.cos(a-0.45),ey-hl*Math.sin(a-0.45));ctx.lineTo(ex-hl*Math.cos(a+0.45),ey-hl*Math.sin(a+0.45));ctx.closePath();ctx.fill();
+  ctx.beginPath();ctx.arc(sx,sy,lw+1.2,0,TAU);ctx.fill()}
+
+function render(){
+  if(S.anim&&performance.now()-S.anim.start>S.anim.dur)S.anim=null;
+  const {w,h,s}=view;const C={panel:css('--panel'),grid:css('--grid'),wall:css('--wall'),ink:css('--ink'),muted:css('--muted'),accent:css('--accent'),beam:css('--beam'),line:css('--line')};
+  ctx.clearRect(0,0,w,h);ctx.fillStyle=C.panel;ctx.fillRect(0,0,w,h);
+  // rejilla
+  ctx.strokeStyle=C.grid;ctx.lineWidth=1;ctx.font='10.5px "JetBrains Mono", monospace';ctx.fillStyle=C.muted;
+  for(let x=0;x<=W;x++){ctx.beginPath();ctx.moveTo(X(x)+.5,Y(0));ctx.lineTo(X(x)+.5,Y(H));ctx.stroke();if(x%2===0){ctx.textAlign='center';ctx.fillText(x,X(x),Y(0)+15)}}
+  for(let y=0;y<=H;y++){ctx.beginPath();ctx.moveTo(X(0),Y(y)+.5);ctx.lineTo(X(W),Y(y)+.5);ctx.stroke();if(y%2===0||y===H){ctx.textAlign='right';ctx.fillText(y,X(0)-5,Y(y)+4)}}
+  ctx.textAlign='left';ctx.fillText('m',X(W)-12,Y(0)+15);
+  // campo de verosimilitud
+  if(P.model==='lf'){ctx.imageSmoothingEnabled=true;ctx.drawImage(fieldImage(C.accent),X(0),Y(H),W*s,H*s)}
+  // paredes
+  ctx.fillStyle=C.wall;rects.forEach(([a,b,c,d])=>ctx.fillRect(X(a),Y(d),(c-a)*s,(d-b)*s));
+  ctx.strokeStyle=C.wall;ctx.lineWidth=Math.max(5,s*0.12);ctx.lineCap='butt';ctx.beginPath();ctx.moveTo(X(diag[0]),Y(diag[1]));ctx.lineTo(X(diag[2]),Y(diag[3]));ctx.stroke();
+  ctx.lineWidth=3;ctx.strokeRect(X(0),Y(H),W*s,H*s);
+
+  const ps=S.particles,t=S.cur.t;
+  const showTrails=['move','weigh','weighAll','resampleStart'].includes(t);
+  const weighted=ps.some(p=>p.w!=null);const maxW=Math.max(...ps.map(p=>p.w||0),1e-12);
+  const showRays=S.z!=null&&(['weigh','weighAll','resampleStart','draw','drawAll'].includes(t)||!!drag);
+  const len0=Math.max(13,s*0.32);
+
+  // robot real
+  if(P.showRobot){
+    ctx.strokeStyle=C.muted;ctx.setLineDash([2,4]);ctx.lineWidth=1.5;ctx.beginPath();S.hist.forEach((q,i)=>i?ctx.lineTo(X(q.x),Y(q.y)):ctx.moveTo(X(q.x),Y(q.y)));
+    const rp=robotPose();ctx.lineTo(X(rp.x),Y(rp.y));ctx.stroke();ctx.setLineDash([]);
+    if(S.z!=null&&!(S.anim&&S.anim.kind==='robot')){ctx.strokeStyle=C.beam;ctx.lineWidth=3.5;ctx.globalAlpha=.9;ctx.beginPath();ctx.moveTo(X(rp.x),Y(rp.y));ctx.lineTo(X(rp.x+S.z*Math.cos(rp.th)),Y(rp.y+S.z*Math.sin(rp.th)));ctx.stroke();ctx.globalAlpha=1}
+    const rr=Math.max(9,s*0.26);ctx.fillStyle=C.panel;ctx.strokeStyle=C.ink;ctx.lineWidth=2;ctx.beginPath();ctx.arc(X(rp.x),Y(rp.y),rr,0,TAU);ctx.fill();ctx.stroke();
+    ctx.beginPath();ctx.moveTo(X(rp.x),Y(rp.y));ctx.lineTo(X(rp.x)+rr*Math.cos(-rp.th),Y(rp.y)+rr*Math.sin(-rp.th));ctx.stroke();
+    ctx.fillStyle=C.ink;ctx.font='600 11px "Atkinson Hyperlegible", sans-serif';ctx.fillText('robot real',X(rp.x)+rr+4,Y(rp.y)-rr);
+  }
+  // trazas
+  if(showTrails){ctx.setLineDash([1.5,3.5]);ctx.lineWidth=1.2;ps.forEach(p=>{if(!p.from)return;const q=displayPose(p);ctx.strokeStyle=pcol(p.hue,.6);ctx.beginPath();ctx.moveTo(X(p.from.x),Y(p.from.y));ctx.lineTo(X(q.x),Y(q.y));ctx.stroke()});ctx.setLineDash([])}
+  // rayos de la partícula seleccionada
+  if(showRays&&P.model==='lf'){const p=ps[S.selected];if(p){const c=Math.cos(p.th),sn=Math.sin(p.th);const zz=S.z;
+    const ex=p.x+zz*c,ey=p.y+zz*sn;
+    ctx.strokeStyle=C.beam;ctx.lineWidth=3.5;ctx.globalAlpha=.85;ctx.beginPath();ctx.moveTo(X(p.x),Y(p.y));ctx.lineTo(X(ex),Y(ey));ctx.stroke();ctx.globalAlpha=1;
+    ctx.fillStyle=C.beam;ctx.beginPath();ctx.arc(X(ex),Y(ey),4.5,0,TAU);ctx.fill();
+    if(zz<ZMAX){const n=p.near||nearest(ex,ey);ctx.strokeStyle=C.accent;ctx.lineWidth=2;ctx.setLineDash([5,4]);ctx.beginPath();ctx.moveTo(X(ex),Y(ey));ctx.lineTo(X(n.qx),Y(n.qy));ctx.stroke();ctx.setLineDash([]);
+      ctx.fillStyle=C.accent;ctx.beginPath();ctx.arc(X(n.qx),Y(n.qy),3.5,0,TAU);ctx.fill();
+      ctx.font='600 11px "JetBrains Mono", monospace';ctx.fillText('d='+n.d.toFixed(2),(X(ex)+X(n.qx))/2+6,(Y(ey)+Y(n.qy))/2-4)}}}
+  else if(showRays){const p=ps[S.selected];if(p){const ze=p.zexp??raycast(p.x,p.y,p.th);const c=Math.cos(p.th),sn=Math.sin(p.th);
+    ctx.strokeStyle=C.accent;ctx.lineWidth=2;ctx.setLineDash([6,5]);ctx.beginPath();ctx.moveTo(X(p.x),Y(p.y));ctx.lineTo(X(p.x+ze*c),Y(p.y+ze*sn));ctx.stroke();ctx.setLineDash([]);
+    const ex=X(p.x+ze*c),ey=Y(p.y+ze*sn);ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(ex-5,ey-5);ctx.lineTo(ex+5,ey+5);ctx.moveTo(ex+5,ey-5);ctx.lineTo(ex-5,ey+5);ctx.stroke();
+    ctx.strokeStyle=C.beam;ctx.lineWidth=3.5;ctx.globalAlpha=.85;ctx.beginPath();ctx.moveTo(X(p.x),Y(p.y));ctx.lineTo(X(p.x+S.z*c),Y(p.y+S.z*sn));ctx.stroke();ctx.globalAlpha=1;
+    ctx.fillStyle=C.beam;ctx.beginPath();ctx.arc(X(p.x+S.z*c),Y(p.y+S.z*sn),4,0,TAU);ctx.fill();}}
+  // partículas
+  const resPhase=['draw','drawAll'].includes(t);
+  ps.forEach((p,i)=>{const q=displayPose(p);let a=1,len=len0,lw=2;
+    if(weighted&&p.w!=null){const rel=p.w/maxW;a=0.18+0.82*rel;len=len0*(0.7+0.9*Math.sqrt(rel));lw=1.5+1.8*rel}
+    else if(weighted&&p.w==null){a=0.55}
+    if(resPhase&&S.counts[i]===0&&t==='drawAll')a*=0.35;
+    arrow(q.x,q.y,q.th,len,pcol(p.hue,a),lw);
+    if(p.injected){ctx.strokeStyle=C.muted;ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(X(q.x),Y(q.y),9,0,TAU);ctx.stroke()}
+    if(i===S.selected&&(weighted||t==='init'||t==='commit'||t==='move'||t==='input')){ctx.strokeStyle=C.ink;ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(X(q.x),Y(q.y),len*0.55+6,0,TAU);ctx.stroke()}
+    if(ps.length<=14){ctx.fillStyle=pcol(p.hue,Math.max(a,.6));ctx.font='600 11px "JetBrains Mono", monospace';ctx.fillText(i+1,X(q.x)-14,Y(q.y)+14)}
+  });
+  // copias ×n
+  const badge=(x,y,n)=>{const bx=X(x)+8,by=Y(y)-18;ctx.fillStyle=C.ink;ctx.beginPath();ctx.roundRect?ctx.roundRect(bx,by,24,15,4):ctx.rect(bx,by,24,15);ctx.fill();ctx.fillStyle=C.panel;ctx.font='600 10.5px "JetBrains Mono", monospace';ctx.fillText('×'+n,bx+4,by+11)};
+  if(resPhase)ps.forEach((p,i)=>{if(S.counts[i]>0)badge(p.x,p.y,S.counts[i])});
+  if(t==='commit'){const seen={};ps.forEach(p=>{if(p.group>1&&!seen[p.parent]){seen[p.parent]=1;badge(p.x,p.y,p.group)}})}
+  // estimación
+  if(S.est&&!(S.anim)){const e=S.est,r=Math.max(10,s*0.3);ctx.strokeStyle=C.ink;ctx.lineWidth=1.6;ctx.setLineDash([3,3]);ctx.beginPath();
+    for(let k=0;k<3;k++){const a=-e.th+[0,2.5,-2.5][k];const rr=k?r*0.7:r*1.1;const px=X(e.x)+rr*Math.cos(a),py=Y(e.y)+rr*Math.sin(a);k?ctx.lineTo(px,py):ctx.moveTo(px,py)}ctx.closePath();ctx.stroke();ctx.setLineDash([])}
+  requestAnimationFrame(render);
+}
+
+function focusParticle(){return S.particles[S.selected]||S.particles[0]}
+let field={key:null,cv:document.createElement('canvas')};
+function hexRgb(h){h=h.replace('#','');if(h.length===3)h=h.split('').map(c=>c+c).join('');const n=parseInt(h,16)||0;return[n>>16&255,n>>8&255,n&255]}
+function fieldImage(accent){const key=P.sigma+accent;if(field.key===key)return field.cv;
+  const R=10,cw=W*R,ch=H*R,c=field.cv;c.width=cw;c.height=ch;const g=c.getContext('2d');const img=g.createImageData(cw,ch);const [r,gg,b]=hexRgb(accent);
+  for(let j=0;j<ch;j++)for(let i=0;i<cw;i++){const d=nearest((i+.5)/R,H-(j+.5)/R).d;const v=Math.exp(-0.5*(d/P.sigma)**2);const o=(j*cw+i)*4;
+    img.data[o]=r;img.data[o+1]=gg;img.data[o+2]=b;img.data[o+3]=Math.round(v*120)}
+  g.putImageData(img,0,0);field.key=key;return c}
+function drawLF(){
+  const w=bc.clientWidth,h=bc.clientHeight;
+  const C={panel:css('--panel'),grid:css('--grid'),ink:css('--ink'),muted:css('--muted'),accent:css('--accent'),beam:css('--beam'),soft:css('--accent-soft')};
+  const p=focusParticle();
+  let d=p.d;if(d==null&&S.z!=null&&S.z<ZMAX)d=nearest(p.x+S.z*Math.cos(p.th),p.y+S.z*Math.sin(p.th)).d;
+  $('#beamWho').textContent=`partícula ${S.selected+1}`+(d!=null?` · d = ${d.toFixed(2)} m`:'');
+  const L=40,R=12,T=12,B=28,pw=w-L-R,ph=h-T-B;const DM=Math.max(2,Math.ceil(P.sigma*4));
+  const sw=P.wHit+P.wRand||1;const f=x=>(P.wHit*gauss0(x,P.sigma)+P.wRand/ZMAX)/sw;
+  const ymax=f(0)*1.18;const xs=x=>L+x/DM*pw,ys=v=>T+ph-v/ymax*ph;
+  bctx.clearRect(0,0,w,h);bctx.fillStyle=C.panel;bctx.fillRect(0,0,w,h);
+  bctx.strokeStyle=C.grid;bctx.lineWidth=1;bctx.font='10.5px "JetBrains Mono", monospace';bctx.fillStyle=C.muted;bctx.textAlign='center';
+  const xstep=DM<=2?0.25:DM<=4?0.5:1;
+  for(let x=0;x<=DM+1e-9;x+=xstep){bctx.beginPath();bctx.moveTo(xs(x)+.5,T);bctx.lineTo(xs(x)+.5,T+ph);bctx.stroke();bctx.fillText(+x.toFixed(2),xs(x),T+ph+14)}
+  bctx.fillText('d (m)',L+pw-14,Math.min(T+ph+26,h-2));
+  const step=ymax>2?0.5:ymax>0.8?0.25:0.1;bctx.textAlign='right';
+  for(let v=0;v<=ymax;v+=step){bctx.beginPath();bctx.moveTo(L,ys(v)+.5);bctx.lineTo(L+pw,ys(v)+.5);bctx.stroke();bctx.fillText(v.toFixed(2),L-5,ys(v)+4)}
+  const N=200;bctx.beginPath();bctx.moveTo(xs(0),ys(0));for(let i=0;i<=N;i++){const x=i/N*DM;bctx.lineTo(xs(x),ys(f(x)))}bctx.lineTo(xs(DM),ys(0));bctx.closePath();bctx.fillStyle=C.soft;bctx.fill();
+  bctx.strokeStyle=C.muted;bctx.setLineDash([2,3]);bctx.lineWidth=1.2;bctx.beginPath();bctx.moveTo(xs(0),ys(P.wRand/ZMAX/sw));bctx.lineTo(xs(DM),ys(P.wRand/ZMAX/sw));bctx.stroke();bctx.setLineDash([]);
+  bctx.strokeStyle=C.accent;bctx.lineWidth=2.5;bctx.beginPath();for(let i=0;i<=N;i++){const x=i/N*DM;i?bctx.lineTo(xs(x),ys(f(x))):bctx.moveTo(xs(x),ys(f(x)))}bctx.stroke();
+  let html='';
+  if(S.z==null)html=`<span class="sub">Todavía no hay medida. El peso dependerá de la distancia d entre el extremo del rayo medido y el obstáculo más cercano.</span>`;
+  else if(S.z>=ZMAX)html=`<span class="mono">z = <b>z<sub>max</sub></b></span><span class="sub">Lectura máxima: se descarta y todas las partículas reciben el mismo peso.</span>`;
+  else{const dd=Math.min(d,DM);bctx.strokeStyle=C.beam;bctx.lineWidth=2;bctx.beginPath();bctx.moveTo(xs(dd),T);bctx.lineTo(xs(dd),T+ph);bctx.stroke();
+    bctx.fillStyle=C.ink;bctx.beginPath();bctx.arc(xs(dd),ys(f(d)),4.5,0,TAU);bctx.fill();
+    bctx.fillStyle=C.beam;bctx.font='600 11px "Atkinson Hyperlegible", sans-serif';const right=xs(dd)>L+pw-60;bctx.textAlign=right?'right':'left';bctx.fillText('d',xs(dd)+(right?-5:5),T+12);
+    html=`<span class="mono">z = <b>${S.z.toFixed(2)} m</b></span><span class="mono">d = <b>${d.toFixed(2)} m</b></span><span class="mono">p(z | x, m) = <b>${fw(f(d))}</b></span>`;
+    if(p.w==null&&S.cur.t!=='commit')html+=`<span class="sub">(aún no asignado como peso)</span>`}
+  $('#readout').innerHTML=html;
+  $('#blegend').innerHTML='<span><span class="sw" style="border-color:var(--accent);border-top-width:3px"></span>z<sub>hit</sub>·N(d; 0, σ) + z<sub>rand</sub>/z<sub>max</sub></span><span><span class="sw" style="border-color:var(--muted);border-top-style:dotted"></span>suelo de z<sub>rand</sub></span><span>En el mapa, el sombreado azul es el campo: más intenso cerca de los obstáculos.</span>';
+}
+const BEAM_LEGEND=$('#blegend').innerHTML;
+function drawBeam(){
+  if(!S)return;const w=bc.clientWidth,h=bc.clientHeight;if(!w)return;
+  if(P.model==='lf'){drawLF();return}
+  if($('#blegend').innerHTML!==BEAM_LEGEND)$('#blegend').innerHTML=BEAM_LEGEND;
+  const C={panel:css('--panel'),grid:css('--grid'),ink:css('--ink'),muted:css('--muted'),accent:css('--accent'),beam:css('--beam'),soft:css('--accent-soft')};
+  const p=focusParticle();const ze=p.zexp??raycast(p.x,p.y,p.th);
+  $('#beamWho').textContent=`partícula ${S.selected+1} · z_exp = ${ze.toFixed(2)} m`;
+  const L=40,R=12,T=12,B=28,pw=w-L-R,ph=h-T-B;
+  const sw=P.wHit+P.wShort+P.wMax+P.wRand||1;
+  const N=360,pts=[];let ymax=0.05;
+  for(let i=0;i<=N;i++){const z=i/N*ZMAX;const c=beamParts(z,ze);const tot=(P.wHit*c.hit+P.wShort*c.short+P.wMax*c.max+P.wRand*c.rand)/sw;pts.push({z,c,tot});if(z<ZMAX-DMAX)ymax=Math.max(ymax,tot)}
+  ymax*=1.18;
+  const xs=z=>L+z/ZMAX*pw, ys=v=>T+ph-Math.min(v,ymax)/ymax*ph;
+  bctx.clearRect(0,0,w,h);bctx.fillStyle=C.panel;bctx.fillRect(0,0,w,h);
+  bctx.strokeStyle=C.grid;bctx.lineWidth=1;bctx.font='10.5px "JetBrains Mono", monospace';bctx.fillStyle=C.muted;bctx.textAlign='center';
+  for(let z=0;z<=ZMAX;z++){bctx.beginPath();bctx.moveTo(xs(z)+.5,T);bctx.lineTo(xs(z)+.5,T+ph);bctx.stroke();bctx.fillText(z,xs(z),T+ph+14)}
+  bctx.fillText('z (m)',L+pw-14,T+ph+26>h?h-2:T+ph+26);
+  const step=ymax>2?1:ymax>0.8?0.25:0.1;bctx.textAlign='right';
+  for(let v=0;v<=ymax;v+=step){bctx.beginPath();bctx.moveTo(L,ys(v)+.5);bctx.lineTo(L+pw,ys(v)+.5);bctx.stroke();bctx.fillText(v.toFixed(step<1?2:0),L-5,ys(v)+4)}
+  // área total
+  bctx.beginPath();bctx.moveTo(xs(0),ys(0));pts.forEach(q=>bctx.lineTo(xs(q.z),ys(q.tot)));bctx.lineTo(xs(ZMAX),ys(0));bctx.closePath();bctx.fillStyle=C.soft;bctx.fill();
+  // componentes
+  const comp=(key,wt,col,dash)=>{bctx.strokeStyle=col;bctx.lineWidth=1.2;bctx.setLineDash(dash);bctx.beginPath();pts.forEach((q,i)=>{const v=wt*q.c[key]/sw;i?bctx.lineTo(xs(q.z),ys(v)):bctx.moveTo(xs(q.z),ys(v))});bctx.stroke();bctx.setLineDash([])};
+  const shortCol=pcol(290,.9);$('#lgShort').style.color=shortCol;
+  comp('hit',P.wHit,C.accent,[4,3]);comp('short',P.wShort,shortCol,[4,3]);comp('rand',P.wRand,C.muted,[2,3]);
+  // total
+  bctx.strokeStyle=C.accent;bctx.lineWidth=2.5;bctx.beginPath();pts.forEach((q,i)=>i?bctx.lineTo(xs(q.z),ys(q.tot)):bctx.moveTo(xs(q.z),ys(q.tot)));bctx.stroke();
+  const maxTop=P.wMax/sw/DMAX;if(maxTop>ymax&&P.wMax>0){bctx.fillStyle=C.muted;bctx.textAlign='center';bctx.fillText('↑max',xs(ZMAX)-14,T+10)}
+  // marcadores
+  const vline=(z,col,label,dy)=>{bctx.strokeStyle=col;bctx.lineWidth=2;bctx.beginPath();bctx.moveTo(xs(z),T);bctx.lineTo(xs(z),T+ph);bctx.stroke();
+    bctx.fillStyle=col;bctx.font='600 11px "Atkinson Hyperlegible", sans-serif';const right=xs(z)>L+pw-80;bctx.textAlign=right?'right':'left';bctx.fillText(label,xs(z)+(right?-5:5),T+12+dy)};
+  vline(ze,C.accent,'z_exp',0);
+  let html=`<span class="mono">z<sub>exp</sub> = <b>${ze.toFixed(2)} m</b></span>`;
+  if(S.z!=null){vline(S.z,C.beam,'z medida',16);const pz=beamP(S.z,ze);
+    bctx.fillStyle=C.ink;bctx.beginPath();bctx.arc(xs(S.z),ys(pz),4.5,0,TAU);bctx.fill();
+    html+=`<span class="mono">z = <b>${S.z.toFixed(2)} m</b></span><span class="mono">p(z | x, m) = <b>${fw(pz)}</b></span>`;
+    if(p.w==null&&S.cur.t!=='commit')html+=`<span class="sub">(aún no asignado como peso)</span>`}
+  else html+=`<span class="sub">Todavía no hay medida: la curva muestra qué esperaría el sensor desde esta partícula.</span>`;
+  $('#readout').innerHTML=html;
+}
+
+// ---------- eventos ----------
+// arrastrar una partícula: mover; Ctrl (o Cmd/Alt) + arrastrar: girar
+let drag=null,uiPending=false;
+const mouse=e=>{const r=cv.getBoundingClientRect();return{mx:e.clientX-r.left,my:e.clientY-r.top}};
+function hitParticle(mx,my){let best=-1,bd=22;S.particles.forEach((p,i)=>{const q=displayPose(p);const d=Math.hypot(X(q.x)-mx,Y(q.y)-my);if(d<bd){bd=d;best=i}});return best}
+function scheduleUI(){if(uiPending)return;uiPending=true;requestAnimationFrame(()=>{uiPending=false;updateUI()})}
+const locked=()=>['draw','drawAll'].includes(S.cur.t);
+cv.addEventListener('pointerdown',e=>{const {mx,my}=mouse(e);const i=hitParticle(mx,my);if(i<0)return;
+  stop();finishAnim();S.selected=i;
+  if(locked()){updateUI();$('#explain').innerHTML='Durante los sorteos del resampling las partículas no se pueden mover, porque los pesos ya están fijados. Vuelve atrás o espera al siguiente ciclo.';return}
+  const p=S.particles[i];drag={i,rot:e.ctrlKey||e.metaKey||e.altKey,dx:p.x-(mx-view.px)/view.s,dy:p.y-(H-(my-view.py)/view.s),moved:false};
+  cv.setPointerCapture(e.pointerId);e.preventDefault();updateUI()});
+cv.addEventListener('pointermove',e=>{const {mx,my}=mouse(e);
+  if(!drag){cv.style.cursor=hitParticle(mx,my)>=0?(locked()?'not-allowed':'grab'):'default';return}
+  cv.style.cursor=drag.rot?'alias':'grabbing';
+  const p=S.particles[drag.i];const wx=(mx-view.px)/view.s,wy=H-(my-view.py)/view.s;
+  if(drag.rot||e.ctrlKey||e.metaKey||e.altKey){drag.rot=true;if(Math.hypot(wx-p.x,wy-p.y)>0.05)p.th=Math.atan2(wy-p.y,wx-p.x)}
+  else{p.x=clamp(wx+drag.dx,0.02,W-0.02);p.y=clamp(wy+drag.dy,0.02,H-0.02)}
+  p.from=null;p.hat=null;p.group=1;drag.moved=true;
+  if(S.z!=null&&p.w!=null&&!S.draws.length){weigh(drag.i);if(S.cur.t==='resampleStart'){normalize();S.est=estimate(true)}}
+  else if(p.w==null)p.zexp=null;
+  scheduleUI()});
+const endDrag=e=>{if(!drag)return;const moved=drag.moved;drag=null;cv.style.cursor='grab';if(moved){dropFuture();updateUI()}};
+cv.addEventListener('pointerup',endDrag);cv.addEventListener('pointercancel',endDrag);
+$('#bStep').onclick=()=>{stop();stepOnce(false)};
+$('#bCycle').onclick=runCycle;$('#bBack').onclick=back;$('#bRepeat').onclick=repeat;$('#bPlay').onclick=play;$('#bReset').onclick=reset;
+$('#bKidnap').onclick=()=>{S.robot=randomFree();S.hist=[{x:S.robot.x,y:S.robot.y}];S.wp=Math.floor(Math.random()*WPS.length);
+  $('#explain').innerHTML='Robot <b>secuestrado</b>: se ha llevado a otra parte del mapa sin que la odometría lo registre. Las partículas siguen donde estaban, así que sus pesos van a ser bajos. Sin partículas aleatorias el filtro no puede recuperarse; sube la inyección para ver cómo lo consigue.';
+  if(!P.showRobot){$('#showRobot').checked=true;readParams()}dropFuture()};
+['a1','a2','a3','a4','zh','zs','zm','zr','sig','lam','inj','speed','model','umode','ur1','ut','ur2'].forEach(id=>$('#'+id).addEventListener('input',()=>{readParams();
+  if(['zh','zs','zm','zr','sig','lam','model'].includes(id)&&S.z!=null&&!S.draws.length){S.particles.forEach((p,k)=>{if(p.w!=null)weigh(k)});if(S.cur.t==='resampleStart'){normalize();S.est=estimate(true)}}
+  if(id!=='speed')dropFuture();
+  updateUI()}));
+['M','init','sampler'].forEach(id=>$('#'+id).addEventListener(id==='M'?'change':'change',()=>{if(id==='sampler'){readParams();updateUI()}else reset()}));
+$('#M').addEventListener('input',()=>{$('#oM').textContent=$('#M').value});
+$('#showRobot').addEventListener('change',()=>{readParams();updateUI()});
+$('#detail').addEventListener('change',()=>{readParams();dropFuture()}); // se aplica desde el siguiente ciclo
+document.addEventListener('keydown',e=>{if(e.target.matches('input,select,textarea'))return;
+  if(e.key==='ArrowRight'||e.key===' '){e.preventDefault();stop();stepOnce(false)}
+  else if(e.key==='ArrowLeft'){e.preventDefault();back()}
+  else if(e.key==='r'||e.key==='R')repeat();
+  else if(e.key==='c'||e.key==='C')runCycle();else if(e.key==='p'||e.key==='P')play();
+  else if(e.key==='v'||e.key==='V'){$('#showRobot').checked=!$('#showRobot').checked;readParams();updateUI()}});
+new ResizeObserver(sizeCanvas).observe(cv.parentElement);new ResizeObserver(sizeCanvas).observe(bc);
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>updateUI());
+new MutationObserver(()=>updateUI()).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+
+reset();sizeCanvas();requestAnimationFrame(render);
+})();
+</script>
+
+</body>
+</html>
