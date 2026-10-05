@@ -137,7 +137,7 @@ Qué se debe entregar:
 
 La entrega de la práctica es **individual**. No obstante como la experimentación con el robot real la hacéis en común habrá partes que sean iguales que otras entregas, por ejemplo los ficheros de datos o los mapas. Las conclusiones ya no tienen por qué ser las mismas. En las tareas con el robot real indicad en la memoria con quién más las habéis realizado.
 
-La fecha de entrega límite para la práctica es el **13 de octubre a las 23:59**. La entrega se realizará por moodle en un único .zip con todos los archivos. Para el video lo mejor sería que lo subiérais a Youtube y lo pusiérais privado compartiendo enlace o lo compartiérais en Google Drive pero también podéis añadirlo al .zip si os cabe.
+La fecha de entrega límite para la práctica es el ~~13 de octubre~~ **20 de octubre a las 23:59** . La entrega se realizará por moodle en un único .zip con todos los archivos. Para el video lo mejor sería que lo subiérais a Youtube y lo pusiérais privado compartiendo enlace o lo compartiérais en Google Drive pero también podéis añadirlo al .zip si os cabe.
 
 
 ## Apéndice 1: Transformación de coordenadas en ROS2
