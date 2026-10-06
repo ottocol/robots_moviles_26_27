@@ -1,0 +1,324 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Laboratorio de filtro de partículas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+<link rel="stylesheet" href="css/styles.css">
+
+<div class="page">
+  <header class="masthead">
+    <div class="titles">
+      <p class="eyebrow">Robots Móviles · Tema 2 · Localización Monte Carlo</p>
+      <h1>Laboratorio de filtro de partículas</h1>
+    </div>
+    <nav class="tabs" role="tablist" aria-label="Secciones">
+      <button type="button" role="tab" id="tab-pasillo" data-tab="pasillo" aria-controls="panel-pasillo" aria-selected="true">Pasillo 1D</button>
+      <button type="button" role="tab" id="tab-mapa" data-tab="mapa" aria-controls="panel-mapa" aria-selected="false">Mapa 2D</button>
+      <button type="button" role="tab" id="tab-codigo" data-tab="codigo" aria-controls="panel-codigo" aria-selected="false">Cómo está hecho</button>
+    </nav>
+  </header>
+
+  <main>
+    <!-- =================================================================
+         PASILLO 1D
+         ================================================================= -->
+    <section id="panel-pasillo" class="tabpanel" role="tabpanel" aria-labelledby="tab-pasillo">
+      <div class="workbench">
+        <div class="stage">
+          <p class="lede">Un robot recorre un pasillo circular con tres puertas. Solo conoce el desplazamiento que ha ordenado y lo que dice un sensor que distingue <em>puerta</em> de <em>pared</em>, y se equivoca a veces. Muévelo con <kbd>←</kbd> <kbd>→</kbd>.</p>
+
+          <div class="canvas-frame">
+            <canvas id="corridor-canvas" aria-label="Pasillo con puertas, robot, partículas y densidad de probabilidad"></canvas>
+          </div>
+
+          <ul class="legend">
+            <li><span class="swatch swatch--robot"></span>Robot real</li>
+            <li><span class="swatch swatch--particle"></span>Partículas (tamaño ∝ peso)</li>
+            <li><span class="swatch swatch--estimate"></span>Estimación (media ponderada)</li>
+            <li><span class="swatch swatch--belief"></span>Filtro exacto (rejilla)</li>
+            <li><span class="swatch swatch--door"></span>Puerta</li>
+          </ul>
+
+          <ol class="phases" id="corridor-phases" aria-label="Fases del filtro">
+            <li data-phase="predict"><b>1</b><span>Predicción<small>modelo de movimiento</small></span></li>
+            <li data-phase="weight"><b>2</b><span>Ponderación<small>modelo del sensor</small></span></li>
+            <li data-phase="resample"><b>3</b><span>Remuestreo<small>copias ∝ peso</small></span></li>
+          </ol>
+
+          <dl class="readouts">
+            <div><dt>Última lectura z</dt><dd id="c-out-reading">—</dd></div>
+            <div><dt>Posición real</dt><dd id="c-out-real">—</dd></div>
+            <div><dt>Estimación</dt><dd id="c-out-est">—</dd></div>
+            <div><dt>Error</dt><dd id="c-out-err">—</dd></div>
+            <div><dt>N<sub>eff</sub> tras ponderar</dt><dd id="c-out-neff">—</dd></div>
+          </dl>
+          <p class="status" id="c-status" role="status" aria-live="polite"></p>
+        </div>
+
+        <aside class="panel" aria-label="Controles del pasillo">
+          <fieldset class="group">
+            <legend>Mover el robot</legend>
+            <div class="pad pad--row">
+              <button type="button" class="btn btn--key" id="c-left" aria-label="Retroceder 0,5 m">← 0,5 m</button>
+              <button type="button" class="btn btn--key" id="c-right" aria-label="Avanzar 0,5 m">0,5 m →</button>
+            </div>
+          </fieldset>
+
+          <fieldset class="group">
+            <legend>Ciclo del filtro</legend>
+            <div class="segmented">
+              <input type="radio" name="c-mode" id="c-mode-full" value="full" checked><label for="c-mode-full">Ciclo completo</label>
+              <input type="radio" name="c-mode" id="c-mode-step" value="step"><label for="c-mode-step">Paso a paso</label>
+            </div>
+            <div class="stepbuttons" id="c-stepbuttons" hidden>
+              <button type="button" class="btn" id="c-weight">2 · Medir y ponderar</button>
+              <button type="button" class="btn" id="c-resample">3 · Remuestrear</button>
+            </div>
+          </fieldset>
+
+          <fieldset class="group">
+            <legend>Partículas</legend>
+            <label class="field" for="c-n"><span>Número de partículas M</span><output for="c-n"></output></label>
+            <input type="range" id="c-n" min="10" max="2000" step="10" value="300">
+            <label class="field" for="c-policy"><span>Cuándo remuestrear</span></label>
+            <select id="c-policy">
+              <option value="always">En cada ciclo</option>
+              <option value="adaptive">Solo si N_eff &lt; M/2</option>
+              <option value="never">Nunca</option>
+            </select>
+            <label class="field" for="c-method"><span>Método de remuestreo</span></label>
+            <select id="c-method">
+              <option value="systematic">Sistemático (baja varianza)</option>
+              <option value="multinomial">Multinomial</option>
+            </select>
+            <label class="field" for="c-random"><span>Partículas aleatorias tras remuestrear</span><output for="c-random"></output></label>
+            <input type="range" id="c-random" min="0" max="20" step="1" value="0">
+          </fieldset>
+
+          <fieldset class="group">
+            <legend>Modelo de movimiento</legend>
+            <label class="field" for="c-motion"><span>σ por metro recorrido</span><output for="c-motion"></output></label>
+            <input type="range" id="c-motion" min="0" max="0.5" step="0.01" value="0.1">
+            <p class="note">El robot real tiene σ = 0,10.</p>
+          </fieldset>
+
+          <fieldset class="group">
+            <legend>Modelo del sensor</legend>
+            <label class="field" for="c-pdd"><span>p(z = puerta | puerta)</span><output for="c-pdd"></output></label>
+            <input type="range" id="c-pdd" min="0.5" max="0.99" step="0.01" value="0.8">
+            <label class="field" for="c-pdw"><span>p(z = puerta | pared)</span><output for="c-pdw"></output></label>
+            <input type="range" id="c-pdw" min="0.01" max="0.5" step="0.01" value="0.1">
+            <p class="note">El sensor real acierta ante una puerta el 80 % de las veces y da falsos positivos ante pared el 10 %.</p>
+          </fieldset>
+
+          <fieldset class="group">
+            <legend>Vista</legend>
+            <label class="check"><input type="checkbox" id="c-exact" checked> Mostrar filtro exacto</label>
+          </fieldset>
+
+          <div class="actions">
+            <button type="button" class="btn" id="c-reset">Reiniciar</button>
+            <button type="button" class="btn btn--warn" id="c-kidnap">Secuestrar robot</button>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- =================================================================
+         MAPA 2D
+         ================================================================= -->
+    <section id="panel-mapa" class="tabpanel" role="tabpanel" aria-labelledby="tab-mapa" hidden>
+      <div class="workbench">
+        <div class="stage">
+          <p class="lede">El mismo filtro con un robot diferencial y un láser de varios haces sobre un mapa de ocupación. Muévelo con <kbd>↑</kbd> <kbd>↓</kbd> para avanzar y <kbd>←</kbd> <kbd>→</kbd> para girar, o activa el paseo automático.</p>
+
+          <div class="canvas-frame">
+            <canvas id="grid-canvas" aria-label="Mapa de ocupación con el robot, sus haces de láser y las partículas"></canvas>
+          </div>
+
+          <ul class="legend">
+            <li><span class="swatch swatch--robot"></span>Robot real y láser</li>
+            <li><span class="swatch swatch--particle"></span>Partículas (opacidad ∝ peso)</li>
+            <li><span class="swatch swatch--estimate"></span>Estimación</li>
+            <li><span class="swatch swatch--odom"></span>Solo odometría</li>
+          </ul>
+
+          <ol class="phases" id="grid-phases" aria-label="Fases del filtro">
+            <li data-phase="predict"><b>1</b><span>Predicción<small>odometría α₁…α₄</small></span></li>
+            <li data-phase="weight"><b>2</b><span>Ponderación<small>modelo del láser</small></span></li>
+            <li data-phase="resample"><b>3</b><span>Remuestreo<small>copias ∝ peso</small></span></li>
+          </ol>
+
+          <dl class="readouts">
+            <div><dt>Error de la estimación</dt><dd id="g-out-err">—</dd></div>
+            <div><dt>Error solo odometría</dt><dd id="g-out-odom">—</dd></div>
+            <div><dt>N<sub>eff</sub> tras ponderar</dt><dd id="g-out-neff">—</dd></div>
+            <div><dt>log p̄(z) media</dt><dd id="g-out-ll">—</dd></div>
+          </dl>
+          <p class="status" id="g-status" role="status" aria-live="polite"></p>
+        </div>
+
+        <aside class="panel" aria-label="Controles del mapa">
+          <fieldset class="group">
+            <legend>Mapa</legend>
+            <select id="g-map" aria-label="Mapa"></select>
+            <p class="note" id="g-map-desc"></p>
+          </fieldset>
+
+          <fieldset class="group">
+            <legend>Mover el robot</legend>
+            <div class="pad">
+              <button type="button" class="btn btn--key pad__up" id="g-fwd" aria-label="Avanzar">↑</button>
+              <button type="button" class="btn btn--key pad__left" id="g-left" aria-label="Girar a la izquierda">↺</button>
+              <button type="button" class="btn btn--key pad__down" id="g-back" aria-label="Retroceder">↓</button>
+              <button type="button" class="btn btn--key pad__right" id="g-right" aria-label="Girar a la derecha">↻</button>
+            </div>
+            <label class="check"><input type="checkbox" id="g-auto"> Paseo automático</label>
+          </fieldset>
+
+          <fieldset class="group">
+            <legend>Ciclo del filtro</legend>
+            <div class="segmented">
+              <input type="radio" name="g-mode" id="g-mode-full" value="full" checked><label for="g-mode-full">Ciclo completo</label>
+              <input type="radio" name="g-mode" id="g-mode-step" value="step"><label for="g-mode-step">Paso a paso</label>
+            </div>
+            <div class="stepbuttons" id="g-stepbuttons" hidden>
+              <button type="button" class="btn" id="g-weight">2 · Medir y ponderar</button>
+              <button type="button" class="btn" id="g-resample">3 · Remuestrear</button>
+            </div>
+          </fieldset>
+
+          <fieldset class="group">
+            <legend>Partículas</legend>
+            <label class="field" for="g-n"><span>Número de partículas M</span><output for="g-n"></output></label>
+            <input type="range" id="g-n" min="50" max="5000" step="50" value="1000">
+            <label class="field" for="g-init"><span>Inicialización</span></label>
+            <select id="g-init">
+              <option value="global">Global (no sabe dónde está)</option>
+              <option value="local">Local (conoce su pose inicial)</option>
+            </select>
+            <label class="field" for="g-policy"><span>Cuándo remuestrear</span></label>
+            <select id="g-policy">
+              <option value="always">En cada ciclo</option>
+              <option value="adaptive">Solo si N_eff &lt; M/2</option>
+              <option value="never">Nunca</option>
+            </select>
+            <label class="field" for="g-method"><span>Método de remuestreo</span></label>
+            <select id="g-method">
+              <option value="systematic">Sistemático (baja varianza)</option>
+              <option value="multinomial">Multinomial</option>
+            </select>
+            <label class="field" for="g-random"><span>Partículas aleatorias tras remuestrear</span><output for="g-random"></output></label>
+            <input type="range" id="g-random" min="0" max="20" step="1" value="0">
+          </fieldset>
+
+          <fieldset class="group">
+            <legend>Modelo de movimiento</legend>
+            <label class="field" for="g-noise"><span>Ruido α₁…α₄ respecto al real</span><output for="g-noise"></output></label>
+            <input type="range" id="g-noise" min="0" max="4" step="0.25" value="1.5">
+            <p class="note">Por debajo de × 1 el filtro es más confiado que la realidad.</p>
+          </fieldset>
+
+          <fieldset class="group">
+            <legend>Modelo del sensor</legend>
+            <label class="field" for="g-sensor"><span>Tipo de modelo</span></label>
+            <select id="g-sensor">
+              <option value="beam">Modelo de haz (raycasting)</option>
+              <option value="field">Likelihood field (AMCL)</option>
+            </select>
+            <label class="field" for="g-beams"><span>Número de haces</span><output for="g-beams"></output></label>
+            <input type="range" id="g-beams" min="4" max="36" step="1" value="12">
+            <label class="field" for="g-sigma"><span>σ del sensor</span><output for="g-sigma"></output></label>
+            <input type="range" id="g-sigma" min="0.02" max="1" step="0.01" value="0.15">
+            <label class="field" for="g-zrand"><span>Componente aleatoria z<sub>rand</sub></span><output for="g-zrand"></output></label>
+            <input type="range" id="g-zrand" min="0" max="0.5" step="0.01" value="0.1">
+            <p class="note">El láser real tiene σ = 0,03 m y un 3 % de lecturas espurias.</p>
+          </fieldset>
+
+          <fieldset class="group">
+            <legend>Vista</legend>
+            <label class="check"><input type="checkbox" id="g-beams-on" checked> Mostrar haces del láser</label>
+            <label class="check"><input type="checkbox" id="g-odom-on" checked> Mostrar pose por odometría</label>
+          </fieldset>
+
+          <div class="actions">
+            <button type="button" class="btn" id="g-reset">Reiniciar partículas</button>
+            <button type="button" class="btn btn--warn" id="g-kidnap">Secuestrar robot</button>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- =================================================================
+         CÓMO ESTÁ HECHO
+         ================================================================= -->
+    <section id="panel-codigo" class="tabpanel prose" role="tabpanel" aria-labelledby="tab-codigo" hidden>
+      <h2>Organización del código</h2>
+      <p>El filtro de partículas está escrito una sola vez y no sabe nada del problema. Cada mundo le entrega un <em>modelo</em> con cuatro funciones, y eso es lo único que cambia entre el pasillo y el mapa.</p>
+
+      <pre class="code"><code>randomState()            estado aleatorio en el mapa
+sampleMotion(state, u)   muestra de p(x_t | u_t, x_{t-1})      ← Fase 1
+logLikelihood(state, z)  log p(z_t | x_t, m)                   ← Fase 2
+estimate(particles)      pose estimada a partir de las partículas</code></pre>
+
+      <div class="filetable">
+        <table>
+          <thead><tr><th>Fichero</th><th>Qué hace</th></tr></thead>
+          <tbody>
+            <tr><td><code>js/core/particle-filter.js</code></td><td>El algoritmo: <code>predict</code>, <code>weight</code>, <code>resample</code>, inyección de partículas aleatorias y N<sub>eff</sub>.</td></tr>
+            <tr><td><code>js/core/resampling.js</code></td><td>Remuestreo multinomial y sistemático.</td></tr>
+            <tr><td><code>js/core/cycle.js</code></td><td>Encadena las tres fases en modo ciclo completo o paso a paso.</td></tr>
+            <tr><td><code>js/core/random.js</code></td><td>Gaussianas, uniformes y ángulos.</td></tr>
+            <tr><td><code>js/corridor/model.js</code></td><td>Pasillo: movimiento 1D con ruido gaussiano y detector binario de puerta.</td></tr>
+            <tr><td><code>js/corridor/markov-grid.js</code></td><td>Filtro de Markov exacto en rejilla, para comparar.</td></tr>
+            <tr><td><code>js/corridor/robot.js</code></td><td>Robot real simulado, con su propio ruido.</td></tr>
+            <tr><td><code>js/grid/model.js</code></td><td>Mapa 2D: modelo de odometría (α₁…α₄), modelo de haz y likelihood field.</td></tr>
+            <tr><td><code>js/grid/grid-map.js</code></td><td>Rejilla de ocupación, raycasting y campo de distancias.</td></tr>
+            <tr><td><code>js/grid/maps.js</code></td><td>Los mapas, dibujados en texto con <code>#</code> y <code>.</code>.</td></tr>
+            <tr><td><code>js/*/view.js</code>, <code>js/*/app.js</code></td><td>Dibujo en canvas y conexión con los controles. No contienen lógica del filtro.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>No usa módulos ES ni librerías: todo cuelga de un objeto global <code>PF</code> y basta abrir <code>index.html</code> con doble clic, sin servidor y sin conexión.</p>
+
+      <h2>Experimentos para clase</h2>
+      <ul class="experiments">
+        <li><strong>Multimodalidad.</strong> Pasillo, paso a paso. Tras ver la primera puerta aparecen tres picos; tras la segunda queda uno. La estimación (media) cae al principio donde no hay ninguna partícula.</li>
+        <li><strong>Pocas partículas.</strong> Pasillo con M = 20 y el filtro exacto visible. El histograma se separa de la curva exacta y a veces converge en la puerta equivocada.</li>
+        <li><strong>Modelo demasiado confiado.</strong> Pon p(z = puerta | pared) en 0,01. Un falso positivo del sensor real borra la hipótesis correcta.</li>
+        <li><strong>Sin ruido de movimiento.</strong> σ = 0 en el pasillo, o × 0 en el mapa. Tras unos cuantos remuestreos todas las partículas son copias de unas pocas y no pueden seguir al robot.</li>
+        <li><strong>N<sub>eff</sub>.</strong> Con inicialización global, N<sub>eff</sub> cae a unas pocas decenas en cada medida: casi todas las partículas están en sitios incompatibles con el láser. Cuando el robot está localizado, sube mucho. Baja σ del sensor a 0,02 y verás que cae aunque el robot esté bien localizado: un sensor muy preciso degenera los pesos.</li>
+        <li><strong>Remuestreo adaptativo.</strong> Elige "Solo si N<sub>eff</sub> &lt; M/2" y avanza paso a paso: en muchos ciclos no hace falta remuestrear, y la nube conserva más diversidad.</li>
+        <li><strong>Sin remuestreo.</strong> Desactívalo en el mapa: las partículas no se concentran donde está el robot, casi todas acaban con peso despreciable y N<sub>eff</sub> cae a 1.</li>
+        <li><strong>Simetría.</strong> Mapa de habitaciones simétricas, inicialización global: varias nubes sobreviven hasta que el robot ve la columna.</li>
+        <li><strong>Secuestro.</strong> Con el robot ya localizado, pulsa <em>Secuestrar</em>. Con 0 % de partículas aleatorias no se recupera; con un 5 % sí. Observa cómo cae la verosimilitud media en el momento del secuestro.</li>
+        <li><strong>Componente aleatoria.</strong> Pon z<sub>rand</sub> = 0 y σ pequeña. Una lectura espuria del láser deja todas las partículas sin peso.</li>
+      </ul>
+
+      <h2>Por dónde empezar a modificar</h2>
+      <p>Para cambiar el modelo del sensor del pasillo, edita <code>likelihood</code> en <code>js/corridor/model.js</code>. Para el láser, <code>logLikelihood</code> en <code>js/grid/model.js</code>. Para añadir un mapa, copia uno de <code>js/grid/maps.js</code> y cambia su dibujo: aparece solo en el desplegable. Los valores "reales" del robot simulado están en <code>truth</code> dentro de cada <code>robot.js</code>.</p>
+    </section>
+  </main>
+</div>
+
+<script src="js/core/random.js"></script>
+<script src="js/core/resampling.js"></script>
+<script src="js/core/particle-filter.js"></script>
+<script src="js/core/cycle.js"></script>
+<script src="js/ui/controls.js"></script>
+<script src="js/corridor/world.js"></script>
+<script src="js/corridor/model.js"></script>
+<script src="js/corridor/robot.js"></script>
+<script src="js/corridor/markov-grid.js"></script>
+<script src="js/corridor/view.js"></script>
+<script src="js/corridor/app.js"></script>
+<script src="js/grid/maps.js"></script>
+<script src="js/grid/grid-map.js"></script>
+<script src="js/grid/model.js"></script>
+<script src="js/grid/robot.js"></script>
+<script src="js/grid/view.js"></script>
+<script src="js/grid/app.js"></script>
+<script src="js/main.js"></script>
+
+</body></html>
