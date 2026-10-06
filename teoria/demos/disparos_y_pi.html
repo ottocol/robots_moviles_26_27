@@ -1,0 +1,624 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Cañonazos y π</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+<style>
+/* Layout: a la izquierda la plaza vista desde arriba (cuadrado con el
+   estanque circular inscrito); a la derecha el marcador, la fórmula y los
+   mandos; debajo, la estimación frente al número de disparos. */
+:root {
+  --bg: #e9edf1;
+  --surface: #f9fbfc;
+  --ink: #18212c;
+  --muted: #5a6879;
+  --line: #c9d1db;
+  --ground: #ddd3c0;      /* plaza de tierra */
+  --ground-edge: #b9ab90;
+  --water: #8fc3e6;       /* estanque */
+  --water-edge: #4d8fbf;
+  --hit-in: #1f4f8a;      /* impacto en el agua */
+  --hit-out: #8a5a2b;     /* impacto en tierra */
+  --ball: #232a33;
+  --accent: #d1344b;      /* estimación, mismo rojo que las partículas */
+  --band: #d1344b;
+  --focus: #1f6ad1;
+
+  --font-display: "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --radius: 6px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f141a; --surface: #161d25; --ink: #e4e9ef; --muted: #95a2b2; --line: #2b3643;
+    --ground: #3a352c; --ground-edge: #5c5446; --water: #1d4a6b; --water-edge: #4d8fbf;
+    --hit-in: #a9d6ff; --hit-out: #d9a066; --ball: #e4e9ef;
+    --accent: #ff5c70; --band: #ff5c70; --focus: #5a9dff;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f141a; --surface: #161d25; --ink: #e4e9ef; --muted: #95a2b2; --line: #2b3643;
+  --ground: #3a352c; --ground-edge: #5c5446; --water: #1d4a6b; --water-edge: #4d8fbf;
+  --hit-in: #a9d6ff; --hit-out: #d9a066; --ball: #e4e9ef;
+  --accent: #ff5c70; --band: #ff5c70; --focus: #5a9dff;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.5; }
+.page { max-width: 1180px; margin: 0 auto; padding: 20px 16px 48px; }
+
+header { border-bottom: 1px solid var(--line); padding-bottom: 12px; margin-bottom: 20px; }
+.eyebrow { margin: 0 0 2px; font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.04em; color: var(--muted); }
+h1 { margin: 0; font-family: var(--font-display); font-weight: 600; font-size: clamp(26px, 4vw, 36px); line-height: 1.1; }
+.lede { margin: 8px 0 0; max-width: 75ch; }
+
+.layout { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 820px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+
+.frame { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 8px; min-width: 0; }
+.frame canvas { display: block; width: 100%; }
+
+.side { display: grid; gap: 14px; min-width: 0; }
+
+/* Marcador */
+.score { display: grid; grid-template-columns: 1.3fr 1fr 1fr; gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+.score div { background: var(--surface); padding: 10px 12px; min-width: 0; }
+.score dt { font-size: 12px; color: var(--muted); }
+.score dd { margin: 0; font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 18px; }
+.score .pi dd { font-size: 30px; line-height: 1.15; color: var(--accent); }
+.score .pi small { display: block; font-size: 12px; color: var(--muted); }
+@media (max-width: 420px) {
+  .score { grid-template-columns: 1fr 1fr; }
+  .score .pi { grid-column: 1 / -1; }
+}
+
+/* Fórmula */
+.formula { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 16px; }
+.formula h2, .controls h2 { margin: 0 0 6px; font-family: var(--font-mono); font-size: 11px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.eq { font-family: var(--font-mono); font-size: 15px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 6px 0; }
+.frac { display: inline-grid; text-align: center; vertical-align: middle; }
+.frac span:first-child { border-bottom: 1px solid currentColor; padding: 0 4px; }
+.frac span:last-child { padding: 0 4px; }
+.eq--result { font-size: 18px; color: var(--accent); }
+.formula p { margin: 8px 0 0; font-size: 13px; color: var(--muted); }
+
+/* Mandos */
+.controls { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 16px 16px; display: grid; gap: 10px; }
+.row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.btn { font: 500 14px var(--font-body); color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 9px 10px; cursor: pointer; }
+.btn:hover { border-color: var(--muted); }
+.btn:active { transform: translateY(1px); }
+.btn--primary { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+.btn--primary:hover { border-color: var(--ink); opacity: 0.9; }
+.field { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; }
+.field output { font-family: var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+input[type="range"] { width: 100%; accent-color: var(--accent); margin: 0; }
+.wide { display: grid; grid-template-columns: 2fr 1fr; gap: 8px; }
+
+.chart { margin-top: 20px; }
+.chart-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 16px; align-items: baseline; margin-bottom: 8px; }
+.chart-head h2 { margin: 0; font-family: var(--font-display); font-weight: 600; font-size: 20px; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 0; padding: 0; list-style: none; font-size: 13px; color: var(--muted); }
+.legend li { display: flex; align-items: center; gap: 6px; }
+.sw { display: inline-block; width: 16px; height: 3px; background: var(--accent); }
+.sw--pi { background: none; border-top: 2px dashed var(--ink); height: 0; }
+.sw--band { height: 10px; background: var(--band); opacity: 0.18; }
+
+.note { margin: 14px 0 0; max-width: 75ch; font-size: 14px; color: var(--muted); }
+kbd { font-family: var(--font-mono); font-size: 12px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; background: var(--surface); }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+</style>
+
+<div class="page">
+  <header>
+    <p class="eyebrow">Robots Móviles · Métodos de Monte Carlo</p>
+    <h1>Cañonazos y π</h1>
+    <p class="lede">Un cañón dispara al azar sobre una plaza cuadrada con un estanque circular en el centro. Sin medir nada, solo contando cuántas bolas caen al agua, se puede estimar π. Pulsa <kbd>espacio</kbd> para disparar una bola.</p>
+  </header>
+
+  <div class="layout">
+    <div class="frame">
+      <canvas id="field" aria-label="Plaza cuadrada vista desde arriba con un estanque circular y los impactos de los cañonazos"></canvas>
+    </div>
+
+    <div class="side">
+      <dl class="score">
+        <div class="pi"><dt>Estimación de π</dt><dd id="out-pi">—</dd><small id="out-err">error: —</small></div>
+        <div><dt>En el agua</dt><dd id="out-in">0</dd></div>
+        <div><dt>Disparos</dt><dd id="out-n">0</dd></div>
+      </dl>
+
+      <section class="formula" aria-label="Fórmula">
+        <h2>En qué se basa</h2>
+        <div class="eq">
+          <span>P(agua) =</span>
+          <span class="frac"><span>área del círculo</span><span>área del cuadrado</span></span>
+          <span>=</span>
+          <span class="frac"><span>π r²</span><span>(2r)²</span></span>
+          <span>=</span>
+          <span class="frac"><span>π</span><span>4</span></span>
+        </div>
+        <div class="eq eq--result">
+          <span>π ≈ 4 ·</span>
+          <span class="frac"><span>N<sub>agua</sub></span><span>N<sub>total</sub></span></span>
+        </div>
+        <p>Si los disparos caen uniformemente en el cuadrado, la fracción que cae al agua tiende a la proporción entre las dos áreas.</p>
+      </section>
+
+      <section class="controls" aria-label="Mandos">
+        <h2>Disparar</h2>
+        <div class="row">
+          <button type="button" class="btn btn--primary" id="fire1">1 bola</button>
+          <button type="button" class="btn" id="fire10">10 bolas</button>
+          <button type="button" class="btn" id="fire100">100 bolas</button>
+        </div>
+        <div class="wide">
+          <button type="button" class="btn" id="auto">Fuego continuo</button>
+          <button type="button" class="btn" id="reset">Reiniciar</button>
+        </div>
+        <label class="field" for="rate"><span>Cadencia del fuego continuo</span><output for="rate" id="rate-out"></output></label>
+        <input type="range" id="rate" min="0" max="100" step="1" value="25">
+      </section>
+    </div>
+  </div>
+
+  <section class="chart">
+    <div class="chart-head">
+      <h2>La estimación frente al número de disparos</h2>
+      <ul class="legend">
+        <li><span class="sw"></span>Estimación</li>
+        <li><span class="sw sw--pi"></span>π = 3,14159…</li>
+        <li><span class="sw sw--band"></span>Error típico esperado (±2σ)</li>
+      </ul>
+    </div>
+    <div class="frame"><canvas id="chart" aria-label="Gráfica de la estimación de π frente al número de disparos, en escala logarítmica"></canvas></div>
+    <p class="note">La banda se estrecha como 1/√N: para ganar una cifra decimal de precisión hacen falta unas 100 veces más disparos. Con el filtro de partículas pasa lo mismo: representa una distribución con M muestras y su error también decrece como 1/√M.</p>
+  </section>
+</div>
+
+<script>
+/* ==========================================================================
+ * Estimación de π por Monte Carlo
+ *
+ *  1. EXPERIMENTO  — dispara bolas y cuenta cuántas caen al agua
+ *  2. HISTORIAL    — guarda la evolución de la estimación para la gráfica
+ *  3. ANIMACIÓN    — bolas en vuelo (solo estética)
+ *  4. DIBUJO       — plaza y gráfica
+ *  5. MANDOS       — botones, cadencia y teclado
+ *
+ * Coordenadas del experimento: el cuadrado es [-1, 1] × [-1, 1] y el
+ * estanque es el círculo de radio 1 centrado en el origen.
+ * ========================================================================== */
+
+// ---------------------------------------------------------------- 1. EXPERIMENTO
+const experiment = {
+  total: 0,
+  inside: 0,
+  impacts: [], // { x, y, inside } para poder redibujar al cambiar el tamaño
+
+  /** Punto aleatorio uniforme en el cuadrado */
+  randomShot() {
+    return { x: 2 * Math.random() - 1, y: 2 * Math.random() - 1 };
+  },
+
+  /** ¿Cae dentro del estanque? x² + y² ≤ r², con r = 1 */
+  isInside(p) {
+    return p.x * p.x + p.y * p.y <= 1;
+  },
+
+  /** Registra un impacto y actualiza la cuenta */
+  land(p) {
+    const inside = this.isInside(p);
+    this.total++;
+    if (inside) this.inside++;
+    if (this.impacts.length < MAX_STORED) this.impacts.push({ x: p.x, y: p.y, inside });
+    history.record(this.total, this.estimate());
+    drawImpact(p.x, p.y, inside);
+  },
+
+  /** π ≈ 4 · N_agua / N_total */
+  estimate() {
+    return this.total === 0 ? NaN : (4 * this.inside) / this.total;
+  },
+
+  reset() {
+    this.total = 0;
+    this.inside = 0;
+    this.impacts = [];
+  },
+};
+const MAX_STORED = 200000; // más impactos no se distinguen en pantalla
+
+// ---------------------------------------------------------------- 2. HISTORIAL
+// Se guarda cada disparo al principio y después solo cuando N crece un 1 %,
+// porque la gráfica tiene el eje x logarítmico.
+const history = {
+  points: [],
+  record(n, est) {
+    const last = this.points[this.points.length - 1];
+    if (n <= 200 || !last || n >= last.n * 1.01) this.points.push({ n, est });
+  },
+  reset() { this.points = []; },
+};
+
+// σ de la estimación: 4·√(p(1−p)/N) con p = π/4  →  ≈ 1,642/√N
+const SIGMA_1 = 4 * Math.sqrt((Math.PI / 4) * (1 - Math.PI / 4));
+
+// ---------------------------------------------------------------- 3. ANIMACIÓN
+const FLIGHT_MS = 650;      // duración del vuelo de cada bola
+const MAX_IN_FLIGHT = 24;   // por encima de esto las bolas caen sin animación
+const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+let inFlight = [];          // { target, start }
+let ripples = [];           // salpicaduras: { x, y, start, inside }
+
+function fire(count) {
+  for (let i = 0; i < count; i++) {
+    const target = experiment.randomShot();
+    if (!reducedMotion && inFlight.length < MAX_IN_FLIGHT) {
+      inFlight.push({ target, start: performance.now() + i * 25 });
+    } else {
+      experiment.land(target);
+    }
+  }
+  requestFrame();
+}
+
+// ---------------------------------------------------------------- 4. DIBUJO
+const fieldCanvas = document.getElementById('field');
+const chartCanvas = document.getElementById('chart');
+const impactLayer = document.createElement('canvas'); // capa fija con los impactos
+let geo = null; // geometría actual de la plaza en píxeles
+
+function colors() {
+  const cs = getComputedStyle(document.documentElement);
+  const g = (n) => cs.getPropertyValue(`--${n}`).trim();
+  return {
+    surface: g('surface'), ink: g('ink'), muted: g('muted'), line: g('line'),
+    ground: g('ground'), groundEdge: g('ground-edge'), water: g('water'), waterEdge: g('water-edge'),
+    hitIn: g('hit-in'), hitOut: g('hit-out'), ball: g('ball'), accent: g('accent'), band: g('band'),
+    mono: g('font-mono'),
+  };
+}
+
+/** Ajusta el canvas a su tamaño en pantalla; devuelve el contexto en px CSS */
+function fit(canvas, cssHeight) {
+  const w = canvas.clientWidth;
+  if (!w) return null;
+  const dpr = window.devicePixelRatio || 1;
+  canvas.style.height = cssHeight + 'px';
+  if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(cssHeight * dpr)) {
+    canvas.width = Math.round(w * dpr);
+    canvas.height = Math.round(cssHeight * dpr);
+  }
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return { ctx, w, h: cssHeight, dpr };
+}
+
+/** Calcula la geometría de la plaza: cuadrado arriba, cañón abajo */
+function layoutField() {
+  const w = fieldCanvas.clientWidth;
+  if (!w) return false;
+  const size = Math.min(w - 16, 560);
+  const cannonSpace = Math.max(54, size * 0.14);
+  const h = size + cannonSpace + 16;
+  const left = (w - size) / 2;
+  const top = 8;
+  geo = {
+    w, h, size, left, top,
+    // del cuadrado [-1,1]² a píxeles (y hacia arriba)
+    X: (x) => left + ((x + 1) / 2) * size,
+    Y: (y) => top + ((1 - y) / 2) * size,
+    cannon: { x: w / 2, y: top + size + cannonSpace * 0.62 },
+    dot: Math.max(1.6, size / 260),
+  };
+  // la capa de impactos se rehace con el tamaño nuevo
+  const dpr = window.devicePixelRatio || 1;
+  impactLayer.width = Math.round(w * dpr);
+  impactLayer.height = Math.round(h * dpr);
+  const ictx = impactLayer.getContext('2d');
+  ictx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const c = colors();
+  for (const p of experiment.impacts) paintImpact(ictx, c, p.x, p.y, p.inside);
+  return true;
+}
+
+function paintImpact(ctx, c, x, y, inside) {
+  ctx.fillStyle = inside ? c.hitIn : c.hitOut;
+  ctx.globalAlpha = 0.75;
+  ctx.beginPath();
+  ctx.arc(geo.X(x), geo.Y(y), geo.dot, 0, 2 * Math.PI);
+  ctx.fill();
+  ctx.globalAlpha = 1;
+}
+
+function drawImpact(x, y, inside) {
+  if (!geo) return;
+  const ctx = impactLayer.getContext('2d');
+  paintImpact(ctx, colors(), x, y, inside);
+  ripples.push({ x, y, inside, start: performance.now() });
+  if (ripples.length > 40) ripples.shift();
+}
+
+function drawField(now) {
+  if (!geo) return;
+  const f = fit(fieldCanvas, geo.h);
+  if (!f) return;
+  const { ctx } = f;
+  const c = colors();
+  const { X, Y, size, left, top } = geo;
+  ctx.clearRect(0, 0, geo.w, geo.h);
+
+  // Plaza y estanque
+  ctx.fillStyle = c.ground;
+  ctx.fillRect(left, top, size, size);
+  ctx.strokeStyle = c.groundEdge;
+  ctx.lineWidth = 2;
+  ctx.strokeRect(left + 1, top + 1, size - 2, size - 2);
+  ctx.fillStyle = c.water;
+  ctx.beginPath();
+  ctx.arc(X(0), Y(0), size / 2 - 1, 0, 2 * Math.PI);
+  ctx.fill();
+  ctx.strokeStyle = c.waterEdge;
+  ctx.stroke();
+
+  // Cotas: r y 2r
+  ctx.strokeStyle = c.ink;
+  ctx.fillStyle = c.ink;
+  ctx.lineWidth = 1;
+  ctx.font = `12px ${c.mono}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'bottom';
+  ctx.beginPath();
+  ctx.moveTo(X(0), Y(0));
+  ctx.lineTo(X(Math.SQRT1_2), Y(Math.SQRT1_2));
+  ctx.stroke();
+  ctx.fillText('r', X(0.42), Y(0.32));
+  ctx.beginPath();
+  ctx.arc(X(0), Y(0), 2.5, 0, 2 * Math.PI);
+  ctx.fill();
+
+  // Impactos ya caídos
+  ctx.drawImage(impactLayer, 0, 0, geo.w, geo.h);
+
+  // Salpicaduras recientes
+  ripples = ripples.filter((r) => now - r.start < 500);
+  for (const r of ripples) {
+    const t = (now - r.start) / 500;
+    ctx.strokeStyle = r.inside ? c.hitIn : c.hitOut;
+    ctx.globalAlpha = 1 - t;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(X(r.x), Y(r.y), 3 + t * 14, 0, 2 * Math.PI);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+
+  // Cañón
+  drawCannon(ctx, c);
+
+  // Bolas en vuelo: posición en planta (sombra) y altura sobre ella (bola)
+  const landed = [];
+  for (const b of inFlight) {
+    const t = (now - b.start) / FLIGHT_MS;
+    if (t < 0) continue;
+    if (t >= 1) { landed.push(b); continue; }
+    const sx = geo.cannon.x + (X(b.target.x) - geo.cannon.x) * t;
+    const sy = geo.cannon.y + (Y(b.target.y) - geo.cannon.y) * t;
+    const height = 4 * t * (1 - t) * size * 0.35; // parábola
+    ctx.fillStyle = c.ink;
+    ctx.globalAlpha = 0.18;
+    ctx.beginPath();
+    ctx.ellipse(sx, sy, 4, 2.5, 0, 0, 2 * Math.PI);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = c.ball;
+    ctx.beginPath();
+    ctx.arc(sx, sy - height, 3.5 + 3 * 4 * t * (1 - t), 0, 2 * Math.PI);
+    ctx.fill();
+  }
+  if (landed.length) {
+    inFlight = inFlight.filter((b) => !landed.includes(b));
+    for (const b of landed) experiment.land(b.target);
+    updateReadouts();
+  }
+}
+
+function drawCannon(ctx, c) {
+  const { x, y } = geo.cannon;
+  const s = geo.size / 400;
+  // apunta al centro del estanque
+  const ang = Math.atan2(geo.Y(0) - y, geo.X(0) - x);
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(ang);
+  ctx.fillStyle = c.ink;
+  ctx.fillRect(-6 * s, -7 * s, 40 * s, 14 * s);           // cañón
+  ctx.fillRect(32 * s, -8.5 * s, 6 * s, 17 * s);          // boca
+  ctx.restore();
+  ctx.strokeStyle = c.ink;
+  ctx.fillStyle = c.surface;
+  ctx.lineWidth = 3 * s;
+  ctx.beginPath();
+  ctx.arc(x, y + 4 * s, 13 * s, 0, 2 * Math.PI);          // rueda
+  ctx.fill();
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(x, y + 4 * s, 3 * s, 0, 2 * Math.PI);
+  ctx.fillStyle = c.ink;
+  ctx.fill();
+}
+
+/** Gráfica: estimación frente a N con eje x logarítmico */
+function drawChart() {
+  const height = chartCanvas.clientWidth < 500 ? 220 : 260;
+  const f = fit(chartCanvas, height);
+  if (!f) return;
+  const { ctx, w, h } = f;
+  const c = colors();
+  const m = { l: 46, r: 30, t: 10, b: 42 };
+  const pw = w - m.l - m.r;
+  const ph = h - m.t - m.b;
+  const nMax = Math.max(1000, 10 ** Math.ceil(Math.log10(Math.max(experiment.total, 1) * 1.001)));
+  const yMin = 2.4, yMax = 3.9;
+  const X = (n) => m.l + (Math.log10(n) / Math.log10(nMax)) * pw;
+  const Y = (v) => m.t + ((yMax - Math.max(yMin, Math.min(yMax, v))) / (yMax - yMin)) * ph;
+
+  ctx.clearRect(0, 0, w, h);
+  ctx.font = `11px ${c.mono}`;
+
+  // Rejilla y ejes
+  ctx.strokeStyle = c.line;
+  ctx.fillStyle = c.muted;
+  ctx.lineWidth = 1;
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'middle';
+  for (let v = 2.5; v <= 3.81; v += 0.25) {
+    ctx.beginPath(); ctx.moveTo(m.l, Y(v)); ctx.lineTo(w - m.r, Y(v)); ctx.stroke();
+    ctx.fillText(v.toFixed(2).replace('.', ','), m.l - 6, Y(v));
+  }
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  for (let e = 0; 10 ** e <= nMax; e++) {
+    const n = 10 ** e;
+    ctx.beginPath(); ctx.moveTo(X(n), m.t); ctx.lineTo(X(n), m.t + ph); ctx.stroke();
+    ctx.fillText(n >= 1e6 ? `${n / 1e6} M` : n >= 1000 ? `${n / 1000} k` : String(n), X(n), m.t + ph + 6);
+  }
+  ctx.fillText('número de disparos N (escala logarítmica)', m.l + pw / 2, m.t + ph + 22);
+
+  // Banda de ±2σ alrededor de π
+  ctx.fillStyle = c.band;
+  ctx.globalAlpha = 0.14;
+  ctx.beginPath();
+  const steps = 120;
+  for (let i = 0; i <= steps; i++) {
+    const n = 10 ** ((i / steps) * Math.log10(nMax));
+    const y = Y(Math.PI + 2 * SIGMA_1 / Math.sqrt(n));
+    i === 0 ? ctx.moveTo(X(n), y) : ctx.lineTo(X(n), y);
+  }
+  for (let i = steps; i >= 0; i--) {
+    const n = 10 ** ((i / steps) * Math.log10(nMax));
+    ctx.lineTo(X(n), Y(Math.PI - 2 * SIGMA_1 / Math.sqrt(n)));
+  }
+  ctx.closePath();
+  ctx.fill();
+  ctx.globalAlpha = 1;
+
+  // π verdadero
+  ctx.strokeStyle = c.ink;
+  ctx.setLineDash([5, 4]);
+  ctx.beginPath(); ctx.moveTo(m.l, Y(Math.PI)); ctx.lineTo(w - m.r, Y(Math.PI)); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Estimación
+  const pts = history.points;
+  if (pts.length) {
+    ctx.strokeStyle = c.accent;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    pts.forEach((p, i) => (i === 0 ? ctx.moveTo(X(p.n), Y(p.est)) : ctx.lineTo(X(p.n), Y(p.est))));
+    const lastN = experiment.total;
+    ctx.lineTo(X(lastN), Y(experiment.estimate()));
+    ctx.stroke();
+    ctx.fillStyle = c.accent;
+    ctx.beginPath();
+    ctx.arc(X(lastN), Y(experiment.estimate()), 4, 0, 2 * Math.PI);
+    ctx.fill();
+  }
+}
+
+function updateReadouts() {
+  const est = experiment.estimate();
+  const fmt = (v, d) => v.toLocaleString('es-ES', { minimumFractionDigits: d, maximumFractionDigits: d });
+  document.getElementById('out-pi').textContent = isNaN(est) ? '—' : fmt(est, 4);
+  document.getElementById('out-err').textContent = isNaN(est) ? 'error: —' : `error: ${fmt(Math.abs(est - Math.PI), 4)}`;
+  document.getElementById('out-in').textContent = experiment.inside.toLocaleString('es-ES');
+  document.getElementById('out-n').textContent = experiment.total.toLocaleString('es-ES');
+  chartDirty = true;
+}
+
+// Bucle de dibujo: solo trabaja mientras hay algo moviéndose
+let frameRequested = false;
+let chartDirty = true;
+function requestFrame() {
+  if (!frameRequested) { frameRequested = true; requestAnimationFrame(frame); }
+}
+function frame(now) {
+  frameRequested = false;
+  autoFire(now);
+  drawField(now);
+  if (chartDirty) { drawChart(); chartDirty = false; }
+  if (inFlight.length || ripples.length || autoOn) requestFrame();
+}
+
+// ---------------------------------------------------------------- 5. MANDOS
+// Cadencia: el slider va de 0 a 100 y se traduce a 1…5000 disparos/s en escala logarítmica
+const rateInput = document.getElementById('rate');
+const rate = () => Math.round(10 ** ((rateInput.value / 100) * Math.log10(5000)));
+const updateRate = () => { document.getElementById('rate-out').textContent = `${rate().toLocaleString('es-ES')} /s`; };
+rateInput.addEventListener('input', updateRate);
+updateRate();
+
+let autoOn = false;
+let lastAuto = 0;
+let pending = 0;
+function autoFire(now) {
+  if (!autoOn) return;
+  const dt = Math.min(0.1, (now - lastAuto) / 1000);
+  lastAuto = now;
+  pending += rate() * dt;
+  const k = Math.floor(pending);
+  if (k > 0) {
+    pending -= k;
+    fire(k);
+    if (inFlight.length >= MAX_IN_FLIGHT) updateReadouts(); // las que caen sin animación
+  }
+}
+
+const autoBtn = document.getElementById('auto');
+autoBtn.addEventListener('click', () => {
+  autoOn = !autoOn;
+  autoBtn.textContent = autoOn ? 'Alto el fuego' : 'Fuego continuo';
+  autoBtn.classList.toggle('btn--primary', autoOn);
+  lastAuto = performance.now();
+  requestFrame();
+});
+
+function shoot(k) { fire(k); updateReadouts(); requestFrame(); }
+document.getElementById('fire1').addEventListener('click', () => shoot(1));
+document.getElementById('fire10').addEventListener('click', () => shoot(10));
+document.getElementById('fire100').addEventListener('click', () => shoot(100));
+document.getElementById('reset').addEventListener('click', () => {
+  experiment.reset();
+  history.reset();
+  inFlight = [];
+  ripples = [];
+  layoutField();
+  updateReadouts();
+  requestFrame();
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.code !== 'Space' || ['BUTTON', 'INPUT'].includes(e.target.tagName)) return;
+  e.preventDefault();
+  shoot(1);
+});
+
+// Redibujar al cambiar el tamaño o el tema
+const relayout = () => { if (layoutField()) { chartDirty = true; requestFrame(); } };
+new ResizeObserver(relayout).observe(document.querySelector('.page'));
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', relayout);
+new MutationObserver(relayout).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+// Estado inicial: 300 disparos ya hechos, para que la página no se abra vacía
+layoutField();
+for (let i = 0; i < 300; i++) experiment.land(experiment.randomShot());
+ripples = [];
+updateReadouts();
+requestFrame();
+</script>
+
+</body></html>
