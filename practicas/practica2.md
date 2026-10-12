@@ -170,10 +170,12 @@ Para la máxima nota en este apartado incluye información no solo del *beam* mo
 
 Probad alguna implementación ya hecha de un algoritmo de filtro de partículas para localización. No es necesario que esté integrada en ROS y puede estar implementada en cualquier lenguaje. En Internet hay multitud de ellas. Busca alguna para la que esté disponible el código, y conozcas el lenguaje de programación, ya que deberás examinar su funcionamiento.
 
+Otra opción para este apartado es implementar tu propio filtro de partículas con la ayuda de una IA. En este caso asegúrate de pedirle que el código sea legible y esté bien estructurado ya que luego tendrás que explicarlo tú.
+
 Deberías
 
 + Realizar varias pruebas con el algoritmo variando los parámetros que puedas (como mínimo el número de partículas)
-+ Explicar con el máximo detalle que puedas cómo funciona el código identificando las partes que hemos visro en clase (modelo del sensor, modelo de movimiento, bucle del algoritmo, resampling...). Hazlo en forma de comentarios al código fuente.
++ Explicar con el máximo detalle que puedas cómo funciona el código identificando las partes que hemos visto en clase (modelo del sensor, modelo de movimiento, bucle del algoritmo, resampling...). Hazlo en forma de comentarios al código fuente.
 + Graba un vídeo de máximo 5 minutos explicando el código y haciendo pruebas del algoritmo. No es necesario que salgas tú directamente :) solo la pantalla 
 
 ## Entrega de la práctica
@@ -185,7 +187,7 @@ En resumen, el baremo de puntuación es el siguiente:
 - **Mapeado, localización y navegación (hasta un 7)**: la práctica debe estar adecuadamente documentada, detallando los resultados de todos los experimentos realizados. 
 - **(hasta 1 punto adicional)** probar el mapeado en los Turtlebot reales.
 - **(hasta 1 punto adicional)** Análisis de los modelos de movimiento y de observación en el código fuente de ROS 
-- **(hasta 1 punto adicional)**: probar alguna implementación ya hecha de un algoritmo de filtro de partículas para localización. 
+- **(hasta 1 punto adicional)**: probar alguna implementación ya hecha de un filtro de partículas para localización, o bien hacer la tuya propia con ayuda de IA.
 
 En lugar de alguno de los puntos anteriores se puede hacer cualquier otra ampliación que se os ocurra, por ejemplo se podría valorar con hasta 1 punto probar algún otro algoritmo de mapeado o localización que esté implementado en ROS y esté disponible en Internet. En la memoria de la práctica deberíais incluir cómo lo habéis instalado, una breve explicación de las ideas en que se basa y resultados de funcionamiento, comparándolo con el algoritmo por defecto de ROS e indicando también casos en los que pueda fallar si así ha sido.  **Consultad con el profesor** otras ideas alternativas para ver cuánto se podría valorar en el baremo
 
