@@ -1,0 +1,6 @@
+Mapeo con poses conocidas (rejilla de ocupacion, log-odds)
+
+Abrir index.html con cualquier navegador moderno. No necesita servidor.
+Todo el codigo (HTML, CSS y JavaScript) esta en ese unico archivo.
+Las fuentes IBM Plex se cargan de Google Fonts; sin conexion se usan
+las fuentes del sistema y la demo funciona igual.

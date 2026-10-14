@@ -1,0 +1,643 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>html{color-scheme:light}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>Mapeo con poses conocidas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: banco de laboratorio — mapa grande a la izquierda, panel de parámetros a la derecha, inspector del rayo bajo el mapa */
+:root{
+  --bg:#e9edf1; --panel:#fbfcfd; --ink:#18212b; --muted:#566373; --line:#cfd6de; --soft:#eef2f5;
+  --accent:#d0700a; --accent-soft:rgba(208,112,10,.16);
+  --free:#2f8a93; --occ:#a8343f;
+  --map-free:#3f98a1; --map-unk:#f3f4f2; --map-occ:#8e2733; --map-grid:rgba(24,33,43,.08); --truth:#18212b;
+  --robot:#18212b; --on-accent:#ffffff;
+  --f-sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#10151a; --panel:#171e25; --ink:#e3e8ed; --muted:#8e9bab; --line:#2a343e; --soft:#1e262e;
+  --accent:#f2a24a; --accent-soft:rgba(242,162,74,.18);
+  --free:#5cbcc4; --occ:#e0707a;
+  --map-free:#4fb0b8; --map-unk:#252d35; --map-occ:#e2626e; --map-grid:rgba(227,232,237,.07); --truth:#e3e8ed;
+  --robot:#e3e8ed; --on-accent:#1a1206; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#10151a; --panel:#171e25; --ink:#e3e8ed; --muted:#8e9bab; --line:#2a343e; --soft:#1e262e;
+  --accent:#f2a24a; --accent-soft:rgba(242,162,74,.18);
+  --free:#5cbcc4; --occ:#e0707a;
+  --map-free:#4fb0b8; --map-unk:#252d35; --map-occ:#e2626e; --map-grid:rgba(227,232,237,.07); --truth:#e3e8ed;
+  --robot:#e3e8ed; --on-accent:#1a1206; color-scheme:dark}
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-sans);font-size:14px;line-height:1.45;padding-inline:16px;padding-block:20px 40px}
+.wrap{max-width:1320px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
+header{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:8px 24px}
+h1{font-size:1.45rem;font-weight:700;letter-spacing:-.01em;margin:0;text-wrap:balance}
+header p{margin:0;color:var(--muted);max-width:62ch}
+.eq{font-family:var(--f-mono);font-size:.82rem;color:var(--muted);background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:6px 10px}
+.eq b{color:var(--ink);font-weight:600}
+
+.layout{display:grid;grid-template-columns:minmax(0,1fr) 330px;grid-template-areas:"stage side" "insp side";gap:18px;align-items:start}
+.stage{grid-area:stage;display:flex;flex-direction:column;gap:10px;min-width:0}
+.side{grid-area:side;display:flex;flex-direction:column;gap:12px;min-width:0}
+.insp{grid-area:insp;min-width:0}
+@media (max-width:900px){.layout{grid-template-columns:minmax(0,1fr);grid-template-areas:"stage" "insp" "side"}}
+
+.card{background:var(--panel);border:1px solid var(--line);border-radius:8px}
+.map-wrap{position:relative;line-height:0;overflow:hidden;border-radius:8px;border:1px solid var(--line);background:var(--map-unk)}
+#map{width:100%;display:block;cursor:crosshair;touch-action:none}
+.mapbar{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;justify-content:space-between;font-size:.8rem;color:var(--muted)}
+.readout{font-family:var(--f-mono);font-variant-numeric:tabular-nums;min-height:1.2em}
+.legend{display:flex;align-items:center;gap:8px;font-family:var(--f-mono);font-size:.74rem}
+.legend .bar{width:140px;height:10px;border-radius:2px;border:1px solid var(--line)}
+
+.drive{display:flex;flex-wrap:wrap;gap:14px;align-items:center;justify-content:space-between;padding:12px}
+.pad{display:grid;grid-template-columns:repeat(3,auto);gap:6px}
+.pad .sp{visibility:hidden}
+button{font:inherit;font-weight:500;color:var(--ink);background:var(--soft);border:1px solid var(--line);border-radius:6px;padding:7px 12px;cursor:pointer;transition:background .12s,border-color .12s}
+button:hover:not(:disabled){border-color:var(--muted)}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button:disabled{opacity:.45;cursor:default}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.viewbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px}
+.viewbar .lbl{font-size:.72rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:7px;overflow:hidden;background:var(--soft)}
+.seg label{position:relative;display:block}
+.seg input{position:absolute;opacity:0;pointer-events:none}
+.seg span{display:block;padding:6px 16px;cursor:pointer;font-weight:500;font-size:.88rem}
+.seg label+label span{border-left:1px solid var(--line)}
+.seg input:checked+span{background:var(--accent);color:var(--on-accent)}
+.seg input:focus-visible+span{outline:2px solid var(--ink);outline-offset:-3px}
+.invfig{display:flex;flex-direction:column;gap:4px}
+.invcap{font-size:.74rem;color:var(--muted)}
+#invPolar{width:100%;height:120px;display:block;border-radius:5px;border:1px solid var(--line)}
+#invProf{width:100%;height:150px;display:block}
+.pad button{min-width:48px;font-family:var(--f-mono)}
+.actions{display:flex;flex-wrap:wrap;gap:6px}
+.pose{font-family:var(--f-mono);font-size:.8rem;color:var(--muted);font-variant-numeric:tabular-nums;display:flex;flex-direction:column;gap:2px}
+.pose b{color:var(--ink);font-weight:500}
+.toast{font-size:.8rem;color:var(--occ);min-height:1.1em}
+
+fieldset{border:1px solid var(--line);border-radius:8px;background:var(--panel);margin:0;padding:10px 14px 12px;display:flex;flex-direction:column;gap:9px;min-width:0}
+legend{font-size:.72rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding:0 6px}
+.row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 10px;align-items:center}
+.row label{font-size:.84rem}
+.row output{font-family:var(--f-mono);font-size:.8rem;font-variant-numeric:tabular-nums;color:var(--ink)}
+.row input[type=range]{grid-column:1/-1;width:100%;accent-color:var(--accent);margin:0}
+.row .hint{grid-column:1/-1;font-size:.72rem;color:var(--muted)}
+.inline{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:.84rem}
+select{font:inherit;font-size:.82rem;color:var(--ink);background:var(--soft);border:1px solid var(--line);border-radius:5px;padding:4px 6px;max-width:60%}
+.check{display:flex;align-items:center;gap:8px;font-size:.84rem}
+.check input{accent-color:var(--accent);width:15px;height:15px;margin:0}
+.derived{font-family:var(--f-mono);font-size:.76rem;line-height:1.6;background:var(--soft);border-radius:6px;padding:7px 9px;color:var(--muted);font-variant-numeric:tabular-nums}
+.derived b{color:var(--ink);font-weight:500}
+.note{font-size:.74rem;color:var(--muted)}
+
+.insp-head{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid var(--line)}
+.insp-head h2{font-size:1rem;margin:0;font-weight:600}
+.beamsel{display:flex;align-items:center;gap:6px;font-family:var(--f-mono);font-size:.84rem}
+.beamsel button{padding:4px 10px}
+.beamsel input{width:64px;font:inherit;color:var(--ink);background:var(--soft);border:1px solid var(--line);border-radius:5px;padding:3px 6px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;padding:10px 14px 0}
+.chip{font-family:var(--f-mono);font-size:.76rem;background:var(--soft);border:1px solid var(--line);border-radius:999px;padding:3px 10px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.chip.state-pend{border-color:var(--accent);color:var(--accent)}
+.chip.state-ok{color:var(--free);border-color:var(--free)}
+.plot-wrap{padding:10px 14px 4px}
+#plot{width:100%;height:210px;display:block}
+.tbl-wrap{overflow:auto;max-height:340px;margin:6px 14px 14px;border:1px solid var(--line);border-radius:6px}
+table{border-collapse:collapse;width:100%;font-family:var(--f-mono);font-size:.78rem;font-variant-numeric:tabular-nums}
+th,td{padding:5px 10px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--line)}
+th{position:sticky;top:0;background:var(--soft);font-weight:600;font-family:var(--f-sans);font-size:.74rem;color:var(--muted);z-index:1}
+th:first-child,td:first-child,th:nth-child(3),td:nth-child(3){text-align:left}
+tbody tr:hover{background:var(--accent-soft)}
+tbody tr:last-child td{border-bottom:none}
+.z{display:inline-block;border-radius:3px;padding:0 6px;font-size:.72rem;font-family:var(--f-sans);font-weight:600}
+.z-free{background:color-mix(in srgb,var(--free) 18%,transparent);color:var(--free)}
+.z-occ{background:color-mix(in srgb,var(--occ) 18%,transparent);color:var(--occ)}
+.pos{color:var(--occ)} .neg{color:var(--free)}
+.empty{padding:18px;text-align:center;color:var(--muted);font-family:var(--f-sans)}
+details{padding:0 14px 14px}
+summary{cursor:pointer;font-weight:600;font-size:.86rem;padding:4px 0}
+details p,details li{max-width:72ch;color:var(--muted);font-size:.84rem}
+details code{font-family:var(--f-mono);font-size:.8rem;color:var(--ink)}
+kbd{font-family:var(--f-mono);font-size:.72rem;border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;padding:0 4px;background:var(--soft)}
+@media (prefers-reduced-motion: reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Mapeo con poses conocidas</h1>
+      <p>Rejilla de ocupación de Moravec y Elfes. El robot conoce su pose; cada lectura del sensor de rango se integra en el mapa sumando log-odds.</p>
+    </div>
+    <div class="eq">l<sub>t,i</sub> = l<sub>t−1,i</sub> + <b>inv(m<sub>i</sub>, x<sub>t</sub>, z<sub>t</sub>)</b> − l<sub>0</sub></div>
+  </header>
+
+  <div class="layout">
+    <section class="stage">
+      <div class="viewbar">
+        <span class="lbl">Ver el mapa en</span>
+        <div class="seg" role="radiogroup" aria-label="Unidades del mapa">
+          <label><input type="radio" name="display" id="dispL" value="logodds" checked><span>Log-odds</span></label>
+          <label><input type="radio" name="display" id="dispP" value="prob"><span>Probabilidad</span></label>
+        </div>
+        <span class="note">Tecla <kbd>V</kbd> para alternar. La gráfica del inspector y el perfil del modelo usan las mismas unidades.</span>
+      </div>
+      <div class="map-wrap" id="mapWrap"><canvas id="map" aria-label="Mapa de ocupación. Haz clic para seleccionar un rayo."></canvas></div>
+      <div class="mapbar">
+        <div class="readout" id="readout">Pasa el ratón por el mapa para ver los valores de cada celda. Haz clic cerca de un rayo para inspeccionarlo. Arrastra el robot para recolocarlo.</div>
+        <div class="legend"><span id="legL">−8</span><span class="bar" id="legBar"></span><span id="legR">+8</span></div>
+      </div>
+      <div class="card drive">
+        <div class="pad" role="group" aria-label="Mover el robot">
+          <button id="bLeft" title="Girar a la izquierda (←)">↺</button>
+          <button id="bFwd" title="Avanzar (↑)">↑</button>
+          <button id="bRight" title="Girar a la derecha (→)">↻</button>
+          <span class="sp"></span>
+          <button id="bBack" title="Retroceder (↓)">↓</button>
+          <span class="sp"></span>
+        </div>
+        <div class="pose" id="pose"></div>
+        <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-start">
+          <div class="actions">
+            <button id="bMeasure" title="Nueva lectura sin moverse (Espacio)">Medir de nuevo</button>
+            <button id="bApply" class="primary" title="Integrar la lectura pendiente (I)">Integrar lectura</button>
+            <button id="bReset" title="Borra el mapa y mide desde la pose actual del robot">Reiniciar mapa</button>
+          </div>
+          <div class="toast" id="toast"></div>
+        </div>
+      </div>
+    </section>
+
+    <aside class="side">
+      <fieldset id="g-robot"><legend>Robot</legend>
+        <label class="check"><input type="checkbox" id="auto" checked> Integrar automáticamente tras cada movimiento</label>
+        <p class="note">Desmárcalo para ir paso a paso: cada lectura queda pendiente, el inspector muestra el cambio propuesto y se aplica con «Integrar lectura».</p>
+      </fieldset>
+      <fieldset id="g-sensor"><legend>Sensor de rango</legend>
+        <div class="inline"><span>Lecturas a z<sub>max</sub></span>
+          <select id="maxMode"><option value="free">Libre hasta z_max</option><option value="ignore">Ignorar el rayo</option></select></div>
+      </fieldset>
+      <fieldset id="g-model"><legend>Modelo inverso del sensor</legend>
+        <div class="inline"><span>Tipo de haz</span>
+          <select id="beamModel"><option value="laser" selected>Rayo fino (láser)</option><option value="cone">Cono de apertura β (sonar)</option></select></div>
+        <div class="derived" id="derived"></div>
+        <div class="invfig">
+          <div class="invcap" id="invCap"></div>
+          <canvas id="invPolar" aria-label="Modelo inverso visto en planta"></canvas>
+          <canvas id="invProf" aria-label="Perfil radial del modelo inverso"></canvas>
+        </div>
+      </fieldset>
+      <fieldset id="g-map"><legend>Mapa y visualización</legend>
+        <div class="inline"><span>Resolución</span>
+          <select id="res"><option value="0.1">0,10 m/celda</option><option value="0.2" selected>0,20 m/celda</option><option value="0.25">0,25 m/celda</option></select></div>
+        <label class="check"><input type="checkbox" id="clamp" checked> Saturar log-odds en ±l<sub>max</sub></label>
+        <label class="check"><input type="checkbox" id="showTruth" checked> Mostrar entorno real</label>
+        <label class="check"><input type="checkbox" id="showRays" checked> Mostrar todos los rayos</label>
+        <p class="note">Teclado: <kbd>↑</kbd> <kbd>↓</kbd> mover, <kbd>←</kbd> <kbd>→</kbd> girar, <kbd>Espacio</kbd> medir, <kbd>I</kbd> integrar, <kbd>[</kbd> <kbd>]</kbd> cambiar de rayo, <kbd>V</kbd> log-odds / probabilidad.</p>
+      </fieldset>
+    </aside>
+
+    <section class="insp card">
+      <div class="insp-head">
+        <h2>Inspector del rayo</h2>
+        <div class="beamsel">
+          <button id="kPrev" aria-label="Rayo anterior">‹</button>
+          <span>rayo</span><input type="number" id="kIn" min="0" value="0" aria-label="Índice del rayo"><span id="kOf">/ 0</span>
+          <button id="kNext" aria-label="Rayo siguiente">›</button>
+        </div>
+      </div>
+      <div class="chips" id="chips"></div>
+      <div class="plot-wrap"><canvas id="plot" aria-label="Log-odds de las celdas del rayo antes y después de la lectura"></canvas></div>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr id="thead"></tr></thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+      <details>
+        <summary>Cómo calcula cada celda el modelo inverso</summary>
+        <p><strong>Rayo fino (láser).</strong> Cada rayo tiene ancho cero. Se recorren exactamente las celdas que atraviesa (algoritmo de Amanatides y Woo), con r igual a la distancia al punto medio del tramo dentro de la celda. Las celdas que el rayo cruza antes del impacto reciben l<sub>free</sub> y solo la celda que contiene el punto de impacto recibe l<sub>occ</sub>; α no interviene. En el perfil radial esa celda se dibuja con la anchura de una celda. Si una celda la cruzan varios rayos en la misma lectura (ocurre cerca del robot), se actualiza una sola vez; si algún rayo impacta en ella, gana «ocupada».</p>
+        <p><strong>Cono (sonar, Elfes).</strong> Para cada celda m<sub>i</sub> dentro del campo de percepción se calcula su distancia r al sensor y su rumbo φ. Se le asigna el rayo k de rumbo más cercano, con lectura z<sub>k</sub>. Entonces:</p>
+        <ul>
+          <li>Si <code>r &gt; min(z_max, z_k + α/2)</code> o <code>|φ − θ_k| &gt; β/2</code>, la lectura no dice nada: inv = l<sub>0</sub> y la celda no cambia.</li>
+          <li>Si <code>z_k &lt; z_max</code> y <code>|r − z_k| &lt; α/2</code>, la celda está en el impacto: inv = l<sub>occ</sub> = log(p<sub>occ</sub>/(1−p<sub>occ</sub>)).</li>
+          <li>Si <code>r ≤ z_k</code>, el haz la atravesó: inv = l<sub>free</sub>.</li>
+        </ul>
+        <p>El cambio de cada celda es Δl = inv − l<sub>0</sub>. La probabilidad se recupera con p = 1 − 1/(1 + e<sup>l</sup>). Moravec y Elfes (1985) y Elfes (1989) propusieron la rejilla de ocupación; esta formulación del modelo inverso es la del capítulo 9 de <em>Probabilistic Robotics</em> (Thrun, Burgard y Fox). La simulación lanza un único rayo por el eje de cada haz y añade ruido gaussiano σ a la distancia.</p>
+      </details>
+    </section>
+  </div>
+</div>
+
+<script>
+(()=>{
+const W=10, H=7, D2R=Math.PI/180;
+const OBST={
+  rects:[
+    {x:0,y:0,w:10,h:0.1},{x:0,y:6.9,w:10,h:0.1},{x:0,y:0,w:0.1,h:7},{x:9.9,y:0,w:0.1,h:7},
+    {x:4.2,y:0,w:0.15,h:2.6},{x:4.2,y:3.8,w:0.15,h:3.2},
+    {x:4.35,y:5.0,w:1.6,h:0.15},
+    {x:6.6,y:1.1,w:1.4,h:0.8},
+    {x:1.2,y:4.6,w:0.9,h:0.9},
+    {x:2.6,y:6.2,w:1.2,h:0.7},
+    {x:8.6,y:3.3,w:1.3,h:0.15}
+  ],
+  circles:[{x:7.4,y:4.9,r:0.45},{x:2.9,y:2.9,r:0.25}]
+};
+const P={step:0.25,turn:15,nBeams:19,fov:180,zmax:3.5,sigma:0.03,pOcc:0.7,pFree:0.35,alpha:0.25,beta:10,p0:0.5,lmax:8,
+  res:0.2,display:'logodds',clamp:true,showTruth:true,showRays:true,auto:true,maxMode:'free',beamModel:'laser'};
+const SPEC=[
+  {g:'robot',k:'step',label:'Avance por paso',min:0.05,max:1,step:0.05,u:' m',d:2},
+  {g:'robot',k:'turn',label:'Giro por paso',min:5,max:90,step:5,u:'°',d:0},
+  {g:'sensor',k:'nBeams',label:'Número de rayos',min:1,max:61,step:1,u:'',d:0},
+  {g:'sensor',k:'fov',label:'Campo de visión',min:10,max:360,step:5,u:'°',d:0},
+  {g:'sensor',k:'zmax',label:'Alcance máximo z_max',min:0.5,max:8,step:0.1,u:' m',d:1},
+  {g:'sensor',k:'sigma',label:'Ruido de la medida σ',min:0,max:0.3,step:0.01,u:' m',d:2},
+  {g:'model',k:'pOcc',label:'p_occ: celda en el impacto',min:0.51,max:0.99,step:0.01,u:'',d:2},
+  {g:'model',k:'pFree',label:'p_free: celda atravesada',min:0.01,max:0.49,step:0.01,u:'',d:2},
+  {g:'model',k:'alpha',label:'Grosor del obstáculo α',min:0.05,max:1,step:0.05,u:' m',d:2,hint:'Solo se usa con el modelo de cono; el láser marca únicamente la celda del impacto'},
+  {g:'model',k:'beta',label:'Apertura del haz β',min:1,max:60,step:1,u:'°',d:0,hint:'Solo se usa con el modelo de cono'},
+  {g:'model',k:'p0',label:'Prior p₀',min:0.05,max:0.95,step:0.05,u:'',d:2,reset:true,hint:'Cambiarlo reinicia el mapa'},
+  {g:'map',k:'lmax',label:'Saturación l_max',min:1,max:20,step:0.5,u:'',d:1}
+];
+const $=id=>document.getElementById(id);
+const logit=p=>Math.log(p/(1-p));
+const sig=l=>1/(1+Math.exp(-l));
+const wrap=a=>{while(a>Math.PI)a-=2*Math.PI;while(a<-Math.PI)a+=2*Math.PI;return a};
+const fmt=(v,d=3)=>{if(!isFinite(v))return '∞';const s=Math.abs(v).toFixed(d);return (v<0&&+s!==0?'−':'')+s};
+const sgn=(v,d=3)=>(v>0?'+':'')+fmt(v,d);
+let gaussSpare=null;
+function gauss(){if(gaussSpare!==null){const g=gaussSpare;gaussSpare=null;return g}
+  let u=0,v=0;while(u===0)u=Math.random();v=Math.random();const m=Math.sqrt(-2*Math.log(u));gaussSpare=m*Math.sin(2*Math.PI*v);return m*Math.cos(2*Math.PI*v)}
+
+const robot={x:1.3,y:1.1,th:30*D2R,r:0.2};
+let L,NX,NY,scan=null,selK=9,nScans=0,hoverIdx=-1,rowIdx=-1,toastT=0,drag=null,suppressClick=false;
+
+/* ---------- geometría ---------- */
+function slab(o,d,lo,hi){if(Math.abs(d)<1e-12)return (o<lo||o>hi)?null:[-Infinity,Infinity];
+  let a=(lo-o)/d,b=(hi-o)/d;return a<b?[a,b]:[b,a]}
+function rayCast(x,y,a){const dx=Math.cos(a),dy=Math.sin(a);let best=Infinity;
+  for(const r of OBST.rects){const sx=slab(x,dx,r.x,r.x+r.w);if(!sx)continue;const sy=slab(y,dy,r.y,r.y+r.h);if(!sy)continue;
+    const t0=Math.max(sx[0],sy[0]),t1=Math.min(sx[1],sy[1]);if(t1>=t0&&t1>0){const t=t0>0?t0:0;if(t<best)best=t}}
+  for(const c of OBST.circles){const fx=x-c.x,fy=y-c.y,b=fx*dx+fy*dy,cc=fx*fx+fy*fy-c.r*c.r,disc=b*b-cc;
+    if(disc<0)continue;const s=Math.sqrt(disc);let t=-b-s;if(t<0)t=-b+s;if(t>0&&t<best)best=t}
+  return best}
+function collides(x,y,rad){
+  for(const r of OBST.rects){const cx=Math.max(r.x,Math.min(x,r.x+r.w)),cy=Math.max(r.y,Math.min(y,r.y+r.h));if((x-cx)**2+(y-cy)**2<rad*rad)return true}
+  for(const c of OBST.circles){if(Math.hypot(x-c.x,y-c.y)<rad+c.r)return true}
+  return false}
+function beamAngles(n,fovDeg){if(n===1)return [0];const fov=fovDeg*D2R;
+  if(fovDeg>=360)return Array.from({length:n},(_,k)=>wrap(-Math.PI+k*fov/n));
+  return Array.from({length:n},(_,k)=>-fov/2+k*fov/(n-1))}
+
+/* ---------- mapa ---------- */
+function resetMap(){NX=Math.round(W/P.res);NY=Math.round(H/P.res);L=new Float32Array(NX*NY).fill(logit(P.p0));nScans=0}
+const clampL=(v,p)=>p.clamp?Math.max(-p.lmax,Math.min(p.lmax,v)):v;
+
+function measure(){
+  const p={...P};const angs=beamAngles(p.nBeams,p.fov);
+  const beams=angs.map(a=>{const t=rayCast(robot.x,robot.y,robot.th+a);let z,isMax;
+    if(t>=p.zmax){z=p.zmax;isMax=true}else{z=Math.max(0.02,t+gauss()*p.sigma);if(z>=p.zmax){z=p.zmax;isMax=true}else isMax=false}
+    return {a,z,trueR:t,isMax}});
+  scan={pose:{x:robot.x,y:robot.y,th:robot.th},p,beams,applied:false,contrib:[],perBeam:[]};
+  computeContrib();
+  if(P.auto)applyScan();
+  if(selK>=beams.length)selK=beams.length-1;
+  refresh();
+}
+function computeContrib(){if(scan.p.beamModel==='laser')contribLaser();else contribCone()}
+function contribLaser(){
+  const s=scan,p=s.p,{x,y,th}=s.pose,res=P.res;
+  const lo=logit(p.pOcc),lf=logit(p.pFree),l0=logit(p.p0),ha=p.alpha/2;
+  const byIdx=new Map(),per=s.beams.map(()=>[]);
+  s.beams.forEach((b,k)=>{
+    if(p.maxMode==='ignore'&&b.isMax)return;
+    const a=th+b.a,dx=Math.cos(a),dy=Math.sin(a),tEnd=b.isMax?p.zmax:b.z;
+    let i=Math.floor(x/res),j=Math.floor(y/res);
+    const stx=dx>0?1:-1,sty=dy>0?1:-1;
+    let tMx=Math.abs(dx)<1e-12?Infinity:((dx>0?(i+1)*res:i*res)-x)/dx;
+    let tMy=Math.abs(dy)<1e-12?Infinity:((dy>0?(j+1)*res:j*res)-y)/dy;
+    const tDx=Math.abs(dx)<1e-12?Infinity:res/Math.abs(dx),tDy=Math.abs(dy)<1e-12?Infinity:res/Math.abs(dy);
+    let t=0;
+    for(let guard=0;guard<20000;guard++){
+      if(i<0||i>=NX||j<0||j>=NY)break;
+      const tExit=Math.min(tMx,tMy);
+      let zone=null;
+      if(b.isMax)zone='free';
+      else if(tExit>=b.z)zone='occ';   // la celda que contiene el punto de impacto
+      else zone='free';
+      const idx=j*NX+i,inv=zone==='occ'?lo:lf,tm=(t+Math.min(tExit,tEnd))/2;
+      let c=byIdx.get(idx);
+      if(!c){c={idx,i,j,k,r:tm,dphi:0,zone,inv,dl:inv-l0,lPrev:L[idx]};byIdx.set(idx,c)}
+      else if(zone==='occ'&&c.zone==='free')Object.assign(c,{k,r:tm,zone,inv,dl:inv-l0});
+      if(!per[k].includes(c))per[k].push(c);
+      if(tExit>=tEnd)break;
+      t=tExit;if(tMx<tMy){tMx+=tDx;i+=stx}else{tMy+=tDy;j+=sty}
+    }
+  });
+  const out=[...byIdx.values()];out.forEach(c=>c.lNew=clampL(c.lPrev+c.dl,p));
+  per.forEach((a,k)=>{const b=s.beams[k],dx=Math.cos(s.pose.th+b.a),dy=Math.sin(s.pose.th+b.a);
+    a.forEach(c=>c._r=((c.i+.5)*res-x)*dx+((c.j+.5)*res-y)*dy);a.sort((u,v)=>u._r-v._r)});
+  s.contrib=out;s.perBeam=per;
+}
+function contribCone(){
+  const s=scan,p=s.p,{x,y,th}=s.pose,res=P.res;
+  const lo=logit(p.pOcc),lf=logit(p.pFree),l0=logit(p.p0),hb=p.beta*D2R/2,ha=p.alpha/2,R=p.zmax+ha;
+  const i0=Math.max(0,Math.floor((x-R)/res)),i1=Math.min(NX-1,Math.floor((x+R)/res));
+  const j0=Math.max(0,Math.floor((y-R)/res)),j1=Math.min(NY-1,Math.floor((y+R)/res));
+  const out=[],per=s.beams.map(()=>[]);
+  for(let j=j0;j<=j1;j++)for(let i=i0;i<=i1;i++){
+    const cx=(i+.5)*res,cy=(j+.5)*res,r=Math.hypot(cx-x,cy-y);if(r>R)continue;
+    const phi=wrap(Math.atan2(cy-y,cx-x)-th);
+    let k=-1,bd=Infinity;for(let q=0;q<s.beams.length;q++){const d=Math.abs(wrap(phi-s.beams[q].a));if(d<bd){bd=d;k=q}}
+    if(bd>hb)continue;const b=s.beams[k];
+    if(p.maxMode==='ignore'&&b.isMax)continue;
+    if(r>Math.min(p.zmax,b.z+ha))continue;
+    let zone,inv;
+    if(!b.isMax&&Math.abs(r-b.z)<ha){zone='occ';inv=lo}else if(r<=b.z){zone='free';inv=lf}else continue;
+    const idx=j*NX+i,c={idx,i,j,k,r,dphi:wrap(phi-b.a),zone,inv,dl:inv-l0,lPrev:L[idx]};
+    c.lNew=clampL(c.lPrev+c.dl,p);out.push(c);per[k].push(c)}
+  per.forEach(a=>a.sort((u,v)=>u.r-v.r));s.contrib=out;s.perBeam=per;
+}
+function applyScan(){if(!scan||scan.applied)return;
+  for(const c of scan.contrib){c.lPrev=L[c.idx];c.lNew=clampL(c.lPrev+c.dl,scan.p);L[c.idx]=c.lNew}
+  scan.applied=true;nScans++}
+
+/* ---------- movimiento ---------- */
+function toast(msg){$('toast').textContent=msg;clearTimeout(toastT);toastT=setTimeout(()=>$('toast').textContent='',2600)}
+function move(sign){const nx=robot.x+sign*P.step*Math.cos(robot.th),ny=robot.y+sign*P.step*Math.sin(robot.th);
+  if(collides(nx,ny,robot.r)){toast('Choque: el robot no cabe en esa posición.');return}
+  robot.x=nx;robot.y=ny;measure()}
+function turn(sign){robot.th=wrap(robot.th+sign*P.turn*D2R);measure()}
+
+/* ---------- colores ---------- */
+let CV={};
+function readVars(){const cs=getComputedStyle(document.documentElement);
+  ['--map-free','--map-unk','--map-occ','--map-grid','--truth','--accent','--accent-soft','--robot','--ink','--muted','--line','--free','--occ','--panel','--soft','--f-mono']
+  .forEach(n=>CV[n]=cs.getPropertyValue(n).trim())}
+function hex(h){h=h.replace('#','');if(h.length===3)h=h.split('').map(c=>c+c).join('');const n=parseInt(h,16);return [(n>>16)&255,(n>>8)&255,n&255]}
+const mix=(a,b,t)=>[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t];
+function colorFor(l){if(P.display==='prob'){const v=255*(1-sig(l));return [v,v,v]}
+  const fr=hex(CV['--map-free']),un=hex(CV['--map-unk']),oc=hex(CV['--map-occ']),t=Math.max(-1,Math.min(1,l/P.lmax));
+  return t<0?mix(un,fr,-t):mix(un,oc,t)}
+const rgb=c=>`rgb(${c[0]|0},${c[1]|0},${c[2]|0})`;
+/* tramos radiales del modelo inverso para una lectura z */
+function invProfile(p,z,isMax){const ha=p.alpha/2;
+  if(isMax&&p.maxMode==='ignore')return [{r0:0,r1:p.zmax,zone:'none'}];
+  if(isMax)return [{r0:0,r1:p.zmax,zone:'free'}];
+  if(p.beamModel==='laser'){const a=Math.max(0,z-P.res/2),e=Math.min(p.zmax,z+P.res/2),s=[];
+    if(a>0)s.push({r0:0,r1:a,zone:'free'});s.push({r0:a,r1:e,zone:'occ'});if(e<p.zmax)s.push({r0:e,r1:p.zmax,zone:'none'});return s}
+  const a=Math.max(0,z-ha),e=Math.min(p.zmax,z+ha),s=[];
+  if(a>0)s.push({r0:0,r1:a,zone:'free'});s.push({r0:a,r1:e,zone:'occ'});if(e<p.zmax)s.push({r0:e,r1:p.zmax,zone:'none'});return s}
+
+/* ---------- dibujo del mapa ---------- */
+const cv=$('map'),ctx=cv.getContext('2d'),off=document.createElement('canvas'),octx=off.getContext('2d');
+let S=60,DPR=1;
+function sizeCanvases(){DPR=window.devicePixelRatio||1;const w=$('mapWrap').clientWidth;S=w/W;
+  cv.width=Math.round(w*DPR);cv.height=Math.round(w*H/W*DPR);cv.style.height=(w*H/W)+'px';
+  const pc=$('plot'),pw=pc.clientWidth;pc.width=Math.round(pw*DPR);pc.height=Math.round(210*DPR);
+  [['invPolar',120],['invProf',150]].forEach(([id,hh])=>{const c=$(id),cw=c.clientWidth;c.width=Math.round(cw*DPR);c.height=Math.round(hh*DPR)});
+  refresh()}
+const sx=x=>x*S,sy=y=>(H-y)*S;
+function drawMap(){
+  off.width=NX;off.height=NY;const img=octx.createImageData(NX,NY),d=img.data;
+  for(let j=0;j<NY;j++)for(let i=0;i<NX;i++){const c=colorFor(L[j*NX+i]);
+    const o=((NY-1-j)*NX+i)*4;d[o]=c[0];d[o+1]=c[1];d[o+2]=c[2];d[o+3]=255}
+  octx.putImageData(img,0,0);
+  ctx.setTransform(DPR,0,0,DPR,0,0);ctx.imageSmoothingEnabled=false;
+  ctx.clearRect(0,0,cv.width,cv.height);ctx.drawImage(off,0,0,NX*P.res*S,NY*P.res*S);
+  const cpx=P.res*S;
+  if(cpx>=7){ctx.strokeStyle=CV['--map-grid'];ctx.lineWidth=1;ctx.beginPath();
+    for(let i=1;i<NX;i++){const X=Math.round(i*cpx)+.5;ctx.moveTo(X,0);ctx.lineTo(X,H*S)}
+    for(let j=1;j<NY;j++){const Y=Math.round(j*cpx)+.5;ctx.moveTo(0,Y);ctx.lineTo(W*S,Y)}ctx.stroke()}
+  if(P.showTruth){ctx.strokeStyle=CV['--truth'];ctx.globalAlpha=.55;ctx.lineWidth=1.2;ctx.setLineDash([4,3]);
+    for(const r of OBST.rects)ctx.strokeRect(sx(r.x),sy(r.y+r.h),r.w*S,r.h*S);
+    for(const c of OBST.circles){ctx.beginPath();ctx.arc(sx(c.x),sy(c.y),c.r*S,0,2*Math.PI);ctx.stroke()}
+    ctx.setLineDash([]);ctx.globalAlpha=1}
+  if(!scan||drag){drawRobot();return}
+  const {x,y,th}=scan.pose,p=scan.p,ha=p.alpha/2;
+  // cono del rayo seleccionado
+  const b=scan.beams[selK];
+  if(b&&p.beamModel==='cone'){const R2=Math.min(p.zmax,b.z+ha)*S,hb=p.beta*D2R/2;ctx.fillStyle=CV['--accent-soft'];ctx.beginPath();ctx.moveTo(sx(x),sy(y));
+    ctx.arc(sx(x),sy(y),R2,-(th+b.a+hb),-(th+b.a-hb));ctx.closePath();ctx.fill()}
+  // celdas del rayo seleccionado
+  if(b){for(const c of scan.perBeam[selK]){const X=c.i*cpx,Y=(NY-1-c.j)*cpx;
+      ctx.strokeStyle=c.zone==='occ'?CV['--occ']:CV['--accent'];ctx.lineWidth=c.zone==='occ'?2:1.3;ctx.strokeRect(X+1,Y+1,cpx-2,cpx-2)}}
+  const hi=rowIdx>=0?rowIdx:-1;
+  if(hi>=0){const i=hi%NX,j=Math.floor(hi/NX);ctx.strokeStyle=CV['--ink'];ctx.lineWidth=2.5;ctx.strokeRect(i*cpx,(NY-1-j)*cpx,cpx,cpx)}
+  // rayos
+  scan.beams.forEach((bm,k)=>{if(!P.showRays&&k!==selK)return;const a=th+bm.a,ex=x+bm.z*Math.cos(a),ey=y+bm.z*Math.sin(a);
+    const sel=k===selK;ctx.strokeStyle=sel?CV['--accent']:CV['--muted'];ctx.globalAlpha=sel?1:.6;ctx.lineWidth=sel?2.2:1;
+    ctx.setLineDash(bm.isMax?[3,3]:[]);ctx.beginPath();ctx.moveTo(sx(x),sy(y));ctx.lineTo(sx(ex),sy(ey));ctx.stroke();ctx.setLineDash([]);
+    if(!bm.isMax){ctx.fillStyle=sel?CV['--accent']:CV['--occ'];ctx.beginPath();ctx.arc(sx(ex),sy(ey),sel?3.5:2.2,0,2*Math.PI);ctx.fill()}
+    ctx.globalAlpha=1});
+  drawRobot();
+}
+function drawRobot(){
+  if(drag){ctx.strokeStyle=CV['--accent'];ctx.lineWidth=1.5;ctx.setLineDash([3,3]);ctx.beginPath();ctx.arc(sx(robot.x),sy(robot.y),robot.r*S+5,0,2*Math.PI);ctx.stroke();ctx.setLineDash([])}
+  ctx.fillStyle=CV['--panel'];ctx.strokeStyle=drag&&drag.blocked?CV['--occ']:CV['--robot'];ctx.lineWidth=2;ctx.beginPath();ctx.arc(sx(robot.x),sy(robot.y),robot.r*S,0,2*Math.PI);ctx.fill();ctx.stroke();
+  ctx.beginPath();ctx.moveTo(sx(robot.x),sy(robot.y));ctx.lineTo(sx(robot.x+robot.r*1.25*Math.cos(robot.th)),sy(robot.y+robot.r*1.25*Math.sin(robot.th)));ctx.stroke();
+}
+
+/* ---------- inspector ---------- */
+/* gráfica genérica de un perfil radial; U = unidades de probabilidad */
+function profileAxes(g,w,h,m,xmax,y0,y1,U){
+  const X=r=>m.l+r/xmax*(w-m.l-m.r),Y=v=>m.t+(y1-v)/(y1-y0)*(h-m.t-m.b);
+  g.strokeStyle=CV['--line'];g.fillStyle=CV['--muted'];g.lineWidth=1;g.textAlign='right';g.textBaseline='middle';
+  let ticks;if(U)ticks=[0,.25,.5,.75,1];else{const ym=y1,st=ym>12?4:ym>6?2:ym>3?1:0.5;ticks=[];for(let v=-Math.floor(ym/st)*st;v<=ym+1e-9;v+=st)ticks.push(v)}
+  ticks.forEach(v=>{const yy=Math.round(Y(v))+.5;g.beginPath();g.moveTo(m.l,yy);g.lineTo(w-m.r,yy);g.stroke();g.fillText(U?v.toFixed(2).replace('.',','):fmt(v,Math.abs(v%1)>0?1:0),m.l-6,yy)});
+  const base=U?0.5:0;g.strokeStyle=CV['--muted'];g.beginPath();g.moveTo(m.l,Math.round(Y(base))+.5);g.lineTo(w-m.r,Math.round(Y(base))+.5);g.stroke();
+  const stepX=xmax>4?1:xmax>2?0.5:0.25;g.textAlign='center';g.textBaseline='top';
+  for(let r=0;r<=xmax+1e-9;r+=stepX)g.fillText(r.toFixed(stepX<0.5?2:1).replace('.',','),X(r),h-m.b+6);
+  g.textAlign='right';g.textBaseline='bottom';g.fillText('r (m)',w-m.r,h-m.b-3);
+  g.save();g.translate(11,m.t+(h-m.t-m.b)/2);g.rotate(-Math.PI/2);g.textAlign='center';g.textBaseline='middle';g.fillText(U?'p(ocupada)':'log-odds',0,0);g.restore();
+  return {X,Y}}
+function profileBands(g,X,m,h,segs,xmax){segs.forEach(s=>{if(s.zone==='none')return;g.fillStyle=s.zone==='occ'?CV['--occ']:CV['--free'];g.globalAlpha=.1;
+  g.fillRect(X(s.r0),m.t,X(Math.min(s.r1,xmax))-X(s.r0),h-m.t-m.b)});g.globalAlpha=1}
+function profileLine(g,X,Y,segs,lvl,xmax){g.beginPath();let first=true;
+  segs.forEach(s=>{const v=lvl(s.zone),a=X(s.r0),e=X(Math.min(s.r1,xmax));if(first){g.moveTo(a,Y(v));first=false}else g.lineTo(a,Y(v));g.lineTo(e,Y(v))});g.stroke()}
+function levels(p,U){const l0=logit(p.p0);
+  return U?{free:p.pFree,occ:p.pOcc,none:p.p0}:{free:logit(p.pFree)-l0,occ:logit(p.pOcc)-l0,none:0}}
+
+function drawPlot(){
+  const pc=$('plot'),g=pc.getContext('2d'),w=pc.width/DPR,h=pc.height/DPR;g.setTransform(DPR,0,0,DPR,0,0);g.clearRect(0,0,w,h);
+  g.font=`11px ${CV['--f-mono']}`;
+  if(!scan||!scan.beams[selK]){return}
+  const U=P.display==='prob',p=scan.p,b=scan.beams[selK],cells=scan.perBeam[selK],ha=p.alpha/2;
+  const lv=levels(p,U),val=l=>U?sig(l):l,segs=invProfile(p,b.z,b.isMax);
+  const xmax=Math.max(0.5,Math.min(p.zmax,b.z+ha)*1.06+0.15);
+  let y0=0,y1=1;
+  if(!U){let ym=Math.max(1,Math.abs(lv.occ),Math.abs(lv.free));cells.forEach(c=>{ym=Math.max(ym,Math.abs(c.lPrev),Math.abs(c.lNew))});ym*=1.15;y0=-ym;y1=ym}
+  else{y0=-0.04;y1=1.04}
+  const m={l:44,r:12,t:22,b:28};
+  const {X,Y}=profileAxes(g,w,h,m,xmax,y0,y1,U);
+  profileBands(g,X,m,h,segs,xmax);
+  // perfil del modelo inverso a lo largo del eje del haz
+  g.strokeStyle=CV['--accent'];g.lineWidth=1.6;g.setLineDash([5,3]);
+  profileLine(g,X,Y,segs.concat([{r0:p.zmax,r1:xmax,zone:'none'}]),z=>lv[z],xmax);g.setLineDash([]);
+  // z medido
+  g.strokeStyle=CV['--ink'];g.lineWidth=1;g.beginPath();g.moveTo(Math.round(X(b.z))+.5,m.t);g.lineTo(Math.round(X(b.z))+.5,h-m.b);g.stroke();
+  g.fillStyle=CV['--ink'];g.textAlign=X(b.z)>w-90?'right':'left';g.textBaseline='top';g.fillText(` z = ${fmt(b.z,2)} m `,X(b.z),m.t-16);
+  // celdas
+  cells.forEach(c=>{const xx=X(c.r),y0=Y(val(c.lPrev)),y1=Y(val(c.lNew)),hot=rowIdx===c.idx;
+    g.strokeStyle=CV['--muted'];g.lineWidth=hot?2:1;g.beginPath();g.moveTo(xx,y0);g.lineTo(xx,y1);g.stroke();
+    g.fillStyle=CV['--panel'];g.strokeStyle=CV['--muted'];g.lineWidth=1.3;g.beginPath();g.arc(xx,y0,hot?4.5:3,0,2*Math.PI);g.fill();g.stroke();
+    g.fillStyle=c.zone==='occ'?CV['--occ']:CV['--free'];g.beginPath();g.arc(xx,y1,hot?5:3.4,0,2*Math.PI);g.fill()});
+  // leyenda
+  g.textBaseline='middle';g.textAlign='left';let lx=m.l+4;const ly=m.t-10;
+  g.strokeStyle=CV['--muted'];g.fillStyle=CV['--panel'];g.beginPath();g.arc(lx+4,ly,3,0,2*Math.PI);g.fill();g.stroke();g.fillStyle=CV['--muted'];g.fillText(scan.applied?'antes':'actual',lx+11,ly);lx+=60;
+  g.fillStyle=CV['--free'];g.beginPath();g.arc(lx+4,ly,3.4,0,2*Math.PI);g.fill();g.fillStyle=CV['--muted'];g.fillText(scan.applied?'después':'tras integrar',lx+11,ly);lx+=scan.applied?72:100;
+  g.strokeStyle=CV['--accent'];g.setLineDash([5,3]);g.beginPath();g.moveTo(lx,ly);g.lineTo(lx+18,ly);g.stroke();g.setLineDash([]);g.fillText(U?'p del modelo inverso':'Δl del modelo inverso',lx+24,ly);
+}
+/* panel lateral: el modelo inverso tal como está configurado ahora */
+function drawInvModel(){
+  const cp=$('invPolar'),cr=$('invProf');if(!cp.width||!cr.width)return;
+  const U=P.display==='prob',p=P,ha=p.alpha/2,lv=levels(p,U);
+  const b=scan&&scan.beams[selK];let z,src;
+  if(b&&!b.isMax){z=Math.min(b.z,p.zmax*0.98);src=`Lectura del rayo ${selK}: z = ${fmt(z,2).replace('.',',')} m`}
+  else{z=p.zmax*0.6;src=`Lectura de ejemplo: z = ${fmt(z,2).replace('.',',')} m`}
+  $('invCap').textContent=`${src}. Arriba, en planta; abajo, corte por el eje del haz.`;
+  const lAbs={free:logit(p.pFree),occ:logit(p.pOcc),none:logit(p.p0)};
+  const zoneAt=(r,phi)=>{if(p.beamModel==='cone'&&Math.abs(phi)>p.beta*D2R/2)return 'none';
+    if(r>Math.min(p.zmax,z+ha))return 'none';if(Math.abs(r-z)<ha)return 'occ';return r<=z?'free':'none'};
+  // planta
+  {const g=cp.getContext('2d'),w=cp.width,h=cp.height,ox=8*DPR,oy=h/2,s=(w-16*DPR)/p.zmax;
+    const img=g.createImageData(w,h),d=img.data,cols={free:colorFor(lAbs.free),occ:colorFor(lAbs.occ),none:colorFor(lAbs.none)};
+    for(let py=0;py<h;py++)for(let px=0;px<w;px++){const xx=(px-ox)/s,yy=(oy-py)/s,r=Math.hypot(xx,yy),phi=Math.atan2(yy,xx);
+      const zn=p.beamModel==='cone'?zoneAt(r,phi):'none',c=cols[zn],o=(py*w+px)*4;d[o]=c[0];d[o+1]=c[1];d[o+2]=c[2];d[o+3]=255}
+    g.putImageData(img,0,0);g.setTransform(DPR,0,0,DPR,0,0);
+    const W2=w/DPR,H2=h/DPR,O={x:8,y:H2/2},S2=(W2-16)/p.zmax;
+    if(p.beamModel==='laser'){const segs=invProfile(p,z,false);g.lineWidth=3;
+      segs.forEach(sg=>{if(sg.zone==='none')return;g.strokeStyle=rgb(cols[sg.zone]);g.beginPath();g.moveTo(O.x+sg.r0*S2,O.y);g.lineTo(O.x+sg.r1*S2,O.y);g.stroke()});
+      g.fillStyle=CV['--muted'];g.font=`10px ${CV['--f-mono']}`;g.textAlign='left';g.textBaseline='top';g.fillText('ancho 0 (dibujado con 3 px)',O.x+4,O.y+6)}
+    else{const hb=p.beta*D2R/2;g.strokeStyle=CV['--muted'];g.lineWidth=1;g.setLineDash([3,3]);g.beginPath();
+      g.moveTo(O.x,O.y);g.lineTo(O.x+p.zmax*S2*Math.cos(hb),O.y-p.zmax*S2*Math.sin(hb));
+      g.moveTo(O.x,O.y);g.lineTo(O.x+p.zmax*S2*Math.cos(hb),O.y+p.zmax*S2*Math.sin(hb));g.stroke();g.setLineDash([]);
+      g.fillStyle=CV['--muted'];g.font=`10px ${CV['--f-mono']}`;g.textAlign='left';g.textBaseline='top';g.fillText(`β = ${p.beta}°`,O.x+4,4)}
+    g.strokeStyle=CV['--ink'];g.lineWidth=1;g.setLineDash([2,2]);g.beginPath();g.moveTo(O.x+z*S2,6);g.lineTo(O.x+z*S2,H2-6);g.stroke();g.setLineDash([]);
+    g.fillStyle=CV['--ink'];g.beginPath();g.arc(O.x,O.y,3.5,0,2*Math.PI);g.fill()}
+  // perfil radial
+  {const g=cr.getContext('2d'),w=cr.width/DPR,h=cr.height/DPR;g.setTransform(DPR,0,0,DPR,0,0);g.clearRect(0,0,w,h);g.font=`10px ${CV['--f-mono']}`;
+    const segs=invProfile(p,z,false),xmax=p.zmax;let y0=-0.04,y1=1.04;
+    if(!U){const ym=Math.max(1,Math.abs(lv.occ),Math.abs(lv.free))*1.3;y0=-ym;y1=ym}
+    const m={l:40,r:52,t:10,b:24},{X,Y}=profileAxes(g,w,h,m,xmax,y0,y1,U);
+    profileBands(g,X,m,h,segs,xmax);
+    g.strokeStyle=CV['--accent'];g.lineWidth=2;profileLine(g,X,Y,segs,zn=>lv[zn],xmax);
+    g.textAlign='left';g.textBaseline='middle';
+    const lab=(zn,name)=>{const v=lv[zn];g.fillStyle=zn==='occ'?CV['--occ']:zn==='free'?CV['--free']:CV['--muted'];
+      g.fillText(`${name} ${U?v.toFixed(2).replace('.',','):fmt(v,2)}`,w-m.r+4,Y(v))};
+    lab('occ',U?'p_occ':'Δl');lab('free',U?'p_free':'Δl');if(U)lab('none','p₀');
+    g.strokeStyle=CV['--ink'];g.lineWidth=1;g.setLineDash([2,2]);g.beginPath();g.moveTo(X(z),m.t);g.lineTo(X(z),h-m.b);g.stroke();g.setLineDash([]);
+    g.fillStyle=CV['--ink'];g.textAlign='center';g.textBaseline='bottom';g.fillText('z',X(z),m.t+10)}
+}
+function renderInspector(){
+  const n=scan?scan.beams.length:0;$('kIn').max=Math.max(0,n-1);$('kIn').value=selK;$('kOf').textContent=`/ ${n-1}`;
+  const chips=$('chips'),tb=$('tbody');
+  if(!scan||!scan.beams[selK]){chips.innerHTML='';tb.innerHTML='<tr><td colspan="7" class="empty">Sin lectura</td></tr>';return}
+  const b=scan.beams[selK],cells=scan.perBeam[selK],nf=cells.filter(c=>c.zone==='free').length,no=cells.length-nf;
+  const absA=wrap(scan.pose.th+b.a)/D2R;
+  chips.innerHTML=[
+    `<span class="chip ${scan.applied?'state-ok':'state-pend'}">${scan.applied?'Lectura integrada':'Lectura pendiente'}</span>`,
+    `<span class="chip">θ<sub>k</sub> ${sgn(b.a/D2R,1)}° (global ${fmt(absA,1)}°)</span>`,
+    `<span class="chip">z<sub>k</sub> = ${fmt(b.z,3)} m${b.isMax?' · rango máx.':''}</span>`,
+    `<span class="chip">distancia real ${isFinite(b.trueR)?fmt(b.trueR,3)+' m':'—'}</span>`,
+    `<span class="chip">${nf} libres · ${no} ocupadas</span>`
+  ].join('');
+  const a=scan.applied;
+  $('thead').innerHTML=`<th>Celda (i, j)</th><th>r (m)</th><th>Zona</th><th>${a?'l antes':'l actual'}</th><th>${a?'Δl':'Δl propuesto'}</th><th>${a?'l después':'l tras integrar'}</th><th>p</th>`;
+  if(!cells.length){tb.innerHTML=`<tr><td colspan="7" class="empty">${b.isMax&&scan.p.maxMode==='ignore'?'Rayo a rango máximo ignorado: no modifica ninguna celda.':(scan.p.beamModel==='cone'?'Ninguna celda queda dentro de este haz. Aumenta la apertura β o reduce la resolución.':'Este rayo no atraviesa ninguna celda.')}</td></tr>`;return}
+  tb.innerHTML=cells.map(c=>`<tr data-idx="${c.idx}"><td>(${c.i}, ${c.j})</td><td>${c.r.toFixed(3)}</td><td><span class="z ${c.zone==='occ'?'z-occ':'z-free'}">${c.zone==='occ'?'ocupada':'libre'}</span>${c.k!==selK?` <span class="note">(la actualiza el rayo ${c.k})</span>`:''}</td><td>${fmt(c.lPrev)}</td><td class="${c.dl>0?'pos':'neg'}">${sgn(c.dl)}</td><td>${fmt(c.lNew)}</td><td>${sig(c.lNew).toFixed(3)}</td></tr>`).join('');
+}
+function renderSide(){
+  const lo=logit(P.pOcc),lf=logit(P.pFree),l0=logit(P.p0);
+  $('derived').innerHTML=`l<sub>occ</sub> = log(${P.pOcc.toFixed(2)}/${(1-P.pOcc).toFixed(2)}) = <b>${fmt(lo)}</b><br>l<sub>free</sub> = log(${P.pFree.toFixed(2)}/${(1-P.pFree).toFixed(2)}) = <b>${fmt(lf)}</b><br>l<sub>0</sub> = log(${P.p0.toFixed(2)}/${(1-P.p0).toFixed(2)}) = <b>${fmt(l0)}</b><br>Δl impacto <b>${sgn(lo-l0)}</b> · Δl atravesada <b>${sgn(lf-l0)}</b>`;
+  $('pose').innerHTML=`<span>x <b>${robot.x.toFixed(2)} m</b></span><span>y <b>${robot.y.toFixed(2)} m</b></span><span>θ <b>${fmt(robot.th/D2R,1)}°</b></span><span>lecturas integradas <b>${nScans}</b></span>`;
+  $('bApply').hidden=P.auto;$('bApply').disabled=!scan||scan.applied;
+  const R=P.lmax;
+  if(P.display==='prob'){$('legBar').style.background='linear-gradient(90deg,#fff,#000)';$('legL').textContent='p = 0';$('legR').textContent='1'}
+  else{$('legBar').style.background='linear-gradient(90deg,var(--map-free),var(--map-unk),var(--map-occ))';$('legL').textContent='l = '+fmt(-R,1);$('legR').textContent=sgn(R,1)}
+}
+function refresh(){if(!L)return;readVars();drawMap();drawPlot();drawInvModel();renderInspector();renderSide();updateReadout()}
+
+/* ---------- lectura bajo el cursor ---------- */
+function updateReadout(){if(hoverIdx<0)return;const l=L[hoverIdx],i=hoverIdx%NX,j=Math.floor(hoverIdx/NX);
+  let t=`Celda (${i}, ${j}) · l = ${fmt(l)} · p = ${sig(l).toFixed(3)}`;
+  const c=scan&&scan.contrib.find(c=>c.idx===hoverIdx);
+  if(c)t+=` · rayo ${c.k}, ${c.zone==='occ'?'impacto':'atravesada'}, Δl ${sgn(c.dl)}`;
+  $('readout').textContent=t}
+function evtWorld(e){const r=cv.getBoundingClientRect();const px=e.clientX-r.left,py=e.clientY-r.top;return {x:px/S,y:H-py/S}}
+const onRobot=w=>Math.hypot(w.x-robot.x,w.y-robot.y)<=robot.r*1.4;
+cv.addEventListener('pointerdown',e=>{const w=evtWorld(e);if(!onRobot(w))return;
+  drag={dx:robot.x-w.x,dy:robot.y-w.y,moved:false,blocked:false,ox:robot.x,oy:robot.y};
+  try{cv.setPointerCapture(e.pointerId)}catch(_){}e.preventDefault()});
+cv.addEventListener('pointermove',e=>{const w=evtWorld(e);
+  if(drag){const nx=Math.max(robot.r,Math.min(W-robot.r,w.x+drag.dx)),ny=Math.max(robot.r,Math.min(H-robot.r,w.y+drag.dy));
+    if(Math.hypot(nx-drag.ox,ny-drag.oy)>0.02)drag.moved=true;
+    if(collides(nx,ny,robot.r))drag.blocked=true;else{drag.blocked=false;robot.x=nx;robot.y=ny}
+    drawMap();renderSide();return}
+  cv.style.cursor=onRobot(w)?'grab':'crosshair';
+  const i=Math.floor(w.x/P.res),j=Math.floor(w.y/P.res);
+  hoverIdx=(i>=0&&i<NX&&j>=0&&j<NY)?j*NX+i:-1;updateReadout()});
+function endDrag(){if(!drag)return;const moved=drag.moved;drag=null;cv.style.cursor='grab';
+  if(moved){suppressClick=true;measure()}else refresh()}
+cv.addEventListener('pointerup',endDrag);cv.addEventListener('pointercancel',endDrag);
+cv.addEventListener('click',e=>{if(suppressClick){suppressClick=false;return}if(!scan)return;const w=evtWorld(e),i=Math.floor(w.x/P.res),j=Math.floor(w.y/P.res),idx=j*NX+i;
+  const c=scan.contrib.find(c=>c.idx===idx);
+  if(c){selK=c.k}else{const phi=wrap(Math.atan2(w.y-scan.pose.y,w.x-scan.pose.x)-scan.pose.th);let k=-1,bd=Infinity;
+    scan.beams.forEach((b,q)=>{const d=Math.abs(wrap(phi-b.a));if(d<bd){bd=d;k=q}});
+    if(bd>Math.max(scan.p.beta*D2R,0.2))return;selK=k}
+  refresh()});
+
+/* ---------- controles ---------- */
+function buildControls(){
+  for(const s of SPEC){const fs=$('g-'+s.g),row=document.createElement('div');row.className='row';
+    row.innerHTML=`<label for="p-${s.k}">${s.label}</label><output id="o-${s.k}"></output><input type="range" id="p-${s.k}" min="${s.min}" max="${s.max}" step="${s.step}" value="${P[s.k]}">${s.hint?`<span class="hint">${s.hint}</span>`:''}`;
+    const anchor=fs.querySelector('.derived')||fs.querySelector('.inline,.check');
+    if(s.g==='model'||s.g==='map')fs.insertBefore(row,anchor);else fs.insertBefore(row,fs.querySelector('.inline,.check'));
+    const inp=row.querySelector('input'),out=row.querySelector('output'),show=()=>out.textContent=(+P[s.k]).toFixed(s.d).replace('.',',')+s.u;show();
+    inp.addEventListener('input',()=>{P[s.k]=+inp.value;show();if(!s.reset)paramChanged(s.g);else{renderSide();drawInvModel()}});
+    if(s.reset)inp.addEventListener('change',()=>{resetMap();measure();toast('Mapa reiniciado con el nuevo prior.')})}
+}
+function paramChanged(g){
+  if(g==='robot'){renderSide();return}
+  if(scan&&!scan.applied&&(g==='model'||g==='map')){Object.assign(scan.p,{pOcc:P.pOcc,pFree:P.pFree,alpha:P.alpha,beta:P.beta,lmax:P.lmax,clamp:P.clamp,maxMode:P.maxMode,beamModel:P.beamModel});computeContrib()}
+  else if(scan&&scan.applied&&g!=='map'){$('toast').style.color='var(--muted)';toast('Los cambios se aplicarán en la próxima lectura (pulsa «Medir de nuevo»).');setTimeout(()=>$('toast').style.color='',2700)}
+  refresh()}
+$('auto').addEventListener('change',e=>{P.auto=e.target.checked;renderSide()});
+$('maxMode').addEventListener('change',e=>{P.maxMode=e.target.value;paramChanged('model')});
+$('beamModel').addEventListener('change',e=>{P.beamModel=e.target.value;paramChanged('model')});
+$('clamp').addEventListener('change',e=>{P.clamp=e.target.checked;paramChanged('map')});
+$('showTruth').addEventListener('change',e=>{P.showTruth=e.target.checked;refresh()});
+$('showRays').addEventListener('change',e=>{P.showRays=e.target.checked;refresh()});
+document.querySelectorAll('input[name=display]').forEach(r=>r.addEventListener('change',e=>{P.display=e.target.value;refresh()}));
+function toggleDisplay(){P.display=P.display==='prob'?'logodds':'prob';$(P.display==='prob'?'dispP':'dispL').checked=true;refresh()}
+$('res').addEventListener('change',e=>{P.res=+e.target.value;resetMap();measure()});
+$('bFwd').onclick=()=>move(1);$('bBack').onclick=()=>move(-1);$('bLeft').onclick=()=>turn(1);$('bRight').onclick=()=>turn(-1);
+$('bMeasure').onclick=()=>measure();
+$('bApply').onclick=()=>{applyScan();refresh()};
+$('bReset').onclick=()=>{resetMap();measure()};
+const setK=k=>{if(!scan)return;const n=scan.beams.length;selK=((k%n)+n)%n;rowIdx=-1;refresh()};
+$('kPrev').onclick=()=>setK(selK-1);$('kNext').onclick=()=>setK(selK+1);
+$('kIn').addEventListener('change',e=>setK(Math.round(+e.target.value)||0));
+$('tbody').addEventListener('mouseover',e=>{const tr=e.target.closest('tr[data-idx]');const v=tr?+tr.dataset.idx:-1;if(v!==rowIdx){rowIdx=v;drawMap();drawPlot()}});
+$('tbody').addEventListener('mouseleave',()=>{rowIdx=-1;drawMap();drawPlot()});
+document.addEventListener('keydown',e=>{const t=e.target.tagName;if(t==='INPUT'||t==='SELECT'||t==='TEXTAREA'||e.metaKey||e.ctrlKey||e.altKey)return;
+  const map={ArrowUp:()=>move(1),ArrowDown:()=>move(-1),ArrowLeft:()=>turn(1),ArrowRight:()=>turn(-1),' ':()=>measure(),i:()=>{applyScan();refresh()},I:()=>{applyScan();refresh()},'[':()=>setK(selK-1),']':()=>setK(selK+1),v:toggleDisplay,V:toggleDisplay};
+  if(map[e.key]){e.preventDefault();map[e.key]()}});
+try{matchMedia('(prefers-color-scheme: dark)').addEventListener('change',refresh)}catch(_){}
+new MutationObserver(refresh).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+new ResizeObserver(sizeCanvases).observe($('mapWrap'));
+
+buildControls();resetMap();
+// estado inicial: unas cuantas lecturas para que el mapa no arranque vacío
+measure();turn(1);turn(1);move(1);move(1);move(1);selK=Math.floor(P.nBeams/2);
+sizeCanvases();
+})();
+</script>
+</body>
+</html>
