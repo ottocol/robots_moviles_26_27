@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>EKF-SLAM · laboratorio interactivo</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="site-header">
+    <div>
+      <p class="eyebrow">Laboratorio interactivo · Tim Bailey y Juan Nieto, 2004</p>
+      <h1>EKF-SLAM, fotograma a fotograma</h1>
+      <p class="intro">Sigue la predicción, las observaciones y la corrección. Detén la simulación justo antes de volver a ver un landmark conocido.</p>
+    </div>
+    <div class="header-badge">Simulación local<br><strong>sin dependencias</strong></div>
+  </header>
+
+  <main class="layout">
+    <section class="map-card" aria-label="Mapa de la simulación">
+      <div class="map-toolbar">
+        <div class="legend">
+          <span><i class="legend-line route"></i> Waypoints</span>
+          <span><i class="legend-dot truth"></i> Landmarks reales</span>
+          <span><i class="legend-dot estimate"></i> Estimaciones + 2σ</span>
+          <span><i class="legend-line trajectory"></i> Trayectoria real</span>
+        </div>
+        <label class="toggle"><input type="checkbox" id="showRays" checked> Rayos</label>
+      </div>
+      <div class="canvas-wrap"><canvas id="map" aria-label="Mapa con robot, landmarks y elipses de incertidumbre"></canvas></div>
+      <div class="map-footer"><span>Robot real <b class="blue">▲</b> · estimado <b class="red">▲</b></span><span>Escala en metros · orientación norte ↑</span></div>
+    </section>
+
+    <aside class="panel">
+      <section class="card controls">
+        <div class="section-heading"><span class="step-number">01</span><h2>Control de la simulación</h2></div>
+        <div class="button-row">
+          <button id="play" class="primary">▶ Reproducir</button>
+          <button id="back" title="Volver un fotograma">← Anterior</button>
+          <button id="step" title="Avanzar una observación">Siguiente →</button>
+        </div>
+        <div class="button-row secondary-row">
+          <button id="jump" class="accent">◎ Ir al cierre del ciclo</button>
+          <button id="reset">↺ Reiniciar</button>
+        </div>
+        <button id="jumpError" class="error-button">⚠ Ir al primer error de asociación</button>
+        <div class="field"><label for="speed">Velocidad <strong id="speedValue">8 fotogramas/s</strong></label><input id="speed" type="range" min="1" max="30" value="8"></div>
+        <div class="field"><label for="scenario">Escenario</label><select id="scenario"><option value="classic">Clásico · mapa original</option><option value="ambiguous">Landmarks próximos · error local</option><option value="falseLoop">Cierre falso · prueba de estrés</option></select></div>
+        <div class="field"><label for="association">Asociación de datos</label><select id="association"><option value="known">Conocida · cierre fácil de observar</option><option value="gated">Vecino más cercano · como Matlab</option></select></div>
+        <p id="scenarioInfo" class="scenario-info">Mapa y ruido de medida originales.</p>
+        <p class="key-hint">Espacio: reproducir/pausar · →: siguiente · ←: anterior. Un fotograma equivale a una observación (0,2 s).</p>
+      </section>
+
+      <section class="card status-card" aria-live="polite">
+        <div class="section-heading"><span class="step-number">02</span><h2>Estado del filtro</h2></div>
+        <div id="phase" class="phase">Preparado para iniciar</div>
+        <div class="stats">
+          <div><span>Fotograma</span><strong id="frame">0</strong></div>
+          <div><span>Tiempo</span><strong id="time">0,0 s</strong></div>
+          <div><span>Vuelta</span><strong id="lap">1 / 2</strong></div>
+          <div><span>En el mapa</span><strong id="features">0 / 35</strong></div>
+          <div><span>Observados ahora</span><strong id="observed">0</strong></div>
+          <div><span>Incertidumbre robot</span><strong id="robotSigma">0,00 m</strong></div>
+          <div><span>Asoc. erróneas</span><strong id="wrongCount">0</strong></div>
+          <div><span>Medidas rechazadas</span><strong id="rejectedCount">0</strong></div>
+          <div><span>Error real robot</span><strong id="positionError">0,00 m</strong></div>
+          <div><span>Asoc. correctas</span><strong id="correctCount">0</strong></div>
+        </div>
+      </section>
+
+      <section class="card association-card">
+        <div class="section-heading"><span class="step-number">03</span><h2>Diagnóstico de asociación</h2></div>
+        <p id="associationText">En el escenario clásico, los landmarks están separados y el vecino más cercano suele acertar.</p>
+        <p class="diagnostic-note">El simulador conoce la identidad real de cada landmark solo para señalar los errores; el EKF no recibe esa información en el modo «vecino más cercano».</p>
+      </section>
+
+      <section class="card closure-card" id="closureCard">
+        <div class="section-heading"><span class="step-number">04</span><h2>Cierre del ciclo</h2></div>
+        <p id="closureText">Pulsa «Ir al cierre del ciclo». La simulación se detendrá después de la predicción y antes de la corrección con un landmark visto en la primera vuelta.</p>
+        <div id="comparison" class="comparison" hidden>
+          <div><span>Robot · antes</span><strong id="robotBefore">—</strong></div>
+          <div><span>Robot · después</span><strong id="robotAfter">—</strong></div>
+          <div><span>Mapa · antes</span><strong id="mapBefore">—</strong></div>
+          <div><span>Mapa · después</span><strong id="mapAfter">—</strong></div>
+        </div>
+      </section>
+
+      <details class="card explanation"><summary>Qué ocurre en cada fotograma</summary>
+        <ol>
+          <li><b>Control y predicción:</b> el robot avanza 8 pasos de 0,025 s; el EKF propaga posición y covarianza.</li>
+          <li><b>Observación:</b> el sensor mide distancia y ángulo de los landmarks a menos de 30 m dentro de su semicírculo frontal.</li>
+          <li><b>Asociación:</b> se decide qué medidas corresponden a landmarks ya presentes y cuáles son nuevos.</li>
+          <li><b>Corrección:</b> cada landmark conocido ajusta la pose y todo el mapa mediante las correlaciones de la covarianza. Los nuevos se añaden al estado.</li>
+        </ol>
+        <p>Las elipses muestran 2 desviaciones típicas. La línea gris discontinua, cuando aparece, conserva las elipses justo antes del cierre.</p>
+      </details>
+    </aside>
+  </main>
+  <section class="matrix-section" aria-labelledby="matrixTitle">
+    <div class="matrix-heading">
+      <div>
+        <p class="eyebrow dark">Covarianza completa</p>
+        <h2 id="matrixTitle">Dentro del filtro</h2>
+        <p>La diagonal representa incertidumbre de cada variable. Las celdas fuera de la diagonal muestran cómo se relacionan la pose y los landmarks.</p>
+      </div>
+      <div class="matrix-controls">
+        <label for="matrixMode">Mostrar</label>
+        <select id="matrixMode">
+          <option value="covariance">Covarianza P</option>
+          <option value="correlation">Correlación ρ</option>
+        </select>
+        <label for="matrixContrast">Contraste</label>
+        <select id="matrixContrast">
+          <option value="linear">Lineal</option>
+          <option value="sqrt">Raíz cuadrada</option>
+        </select>
+      </div>
+    </div>
+    <div class="matrix-grid" id="matrixGrid">
+      <div class="matrix-panel" id="beforePanel" hidden>
+        <div class="matrix-panel-heading"><strong>Justo antes del cierre</strong><span id="beforeDimensions"></span></div>
+        <canvas id="matrixBefore" aria-label="Matriz de covarianza antes del cierre"></canvas>
+        <p class="matrix-hover" id="beforeHover">Pasa el cursor sobre una celda para ver su valor.</p>
+      </div>
+      <div class="matrix-panel">
+        <div class="matrix-panel-heading"><strong id="currentMatrixTitle">Estado actual</strong><span id="currentDimensions"></span></div>
+        <canvas id="matrixCurrent" aria-label="Matriz de covarianza actual"></canvas>
+        <p class="matrix-hover" id="currentHover">Pasa el cursor sobre una celda para ver su valor.</p>
+      </div>
+    </div>
+    <div class="matrix-legend"><span id="matrixMin">−1</span><div class="matrix-gradient"></div><span>0</span><div class="matrix-gradient positive"></div><span id="matrixMax">+1</span></div>
+    <p class="matrix-note" id="matrixNote">Escala lineal compartida entre ambas matrices. P mezcla unidades de posición y ángulo; cambia a correlación ρ para comparar relaciones sin unidades.</p>
+    <div class="matrix-summary" id="matrixSummary" hidden></div>
+  </section>
+  <footer>Adaptación didáctica del simulador EKF-SLAM v1.0 de Tim Bailey y Juan Nieto. Parámetros y mapa incluidos en el ZIP original.</footer>
+  <script src="slam.js"></script>
+  <script src="matrix.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
