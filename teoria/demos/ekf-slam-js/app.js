@@ -4,7 +4,6 @@
   const $ = id => document.getElementById(id);
   const canvas = $("map"), ctx = canvas.getContext("2d");
   const matrixView = new window.MatrixView();
-  const bounds = {left:-145,right:115,bottom:-115,top:105};
   let sim = new EKFSLAM(), history = [], playing = false, jumping = false;
   let lastTick = 0, accumulator = 0, message = "";
 
@@ -172,12 +171,28 @@
     matrixView.render({current:sim.P,before:atClosure?sim.closureGhost.P:null,frame:sim.frame});
   }
 
+  function mapBounds() {
+    let left=Infinity,right=-Infinity,bottom=Infinity,top=-Infinity;
+    const include = (x,y) => {
+      left=Math.min(left,x);right=Math.max(right,x);
+      bottom=Math.min(bottom,y);top=Math.max(top,y);
+    };
+    // El mapa completo fija el encuadre; las estimaciones solo lo amplían si se salen.
+    for (const [x,y] of sim.landmarks) include(x,y);
+    for (const [x,y] of WAYPOINTS) include(x,y);
+    for (const [x,y] of sim.pathEstimated) include(x,y);
+    include(sim.x[0],sim.x[1]);
+    for (let k=3;k<sim.x.length;k+=2) include(sim.x[k],sim.x[k+1]);
+    const margin=7;
+    return {left:left-margin,right:right+margin,bottom:bottom-margin,top:top+margin};
+  }
   function transform() {
-    const w = canvas.clientWidth, h = canvas.clientHeight, pad = 31;
+    const w = canvas.clientWidth, h = canvas.clientHeight, pad = 18;
+    const bounds=mapBounds();
     const scale = Math.min((w-2*pad)/(bounds.right-bounds.left),(h-2*pad)/(bounds.top-bounds.bottom));
     const cx = w/2 - scale*(bounds.left+bounds.right)/2;
     const cy = h/2 + scale*(bounds.bottom+bounds.top)/2;
-    return {w,h,scale,xy:(x,y)=>[cx+x*scale,cy-y*scale]};
+    return {w,h,scale,bounds,xy:(x,y)=>[cx+x*scale,cy-y*scale]};
   }
   function polyline(points,T,color,width=1.5,dash=[]) {
     if (points.length<2) return;
@@ -269,8 +284,8 @@
     ctx.fillStyle="#fbfdfd";ctx.fillRect(0,0,T.w,T.h);
     // Cuadrícula y ejes en metros.
     ctx.lineWidth=1;ctx.strokeStyle="#ebf0f1";ctx.fillStyle="#9aadb5";ctx.font="10px system-ui";
-    for(let x=-125;x<=100;x+=25){const [px]=T.xy(x,0);ctx.beginPath();ctx.moveTo(px,0);ctx.lineTo(px,T.h);ctx.stroke();ctx.fillText(String(x),px+3,T.h-8);}
-    for(let y=-100;y<=100;y+=25){const [,py]=T.xy(0,y);ctx.beginPath();ctx.moveTo(0,py);ctx.lineTo(T.w,py);ctx.stroke();ctx.fillText(String(y),6,py-3);}
+    for(let x=Math.ceil(T.bounds.left/25)*25;x<=T.bounds.right;x+=25){const [px]=T.xy(x,0);ctx.beginPath();ctx.moveTo(px,0);ctx.lineTo(px,T.h);ctx.stroke();ctx.fillText(String(x),px+3,T.h-8);}
+    for(let y=Math.ceil(T.bounds.bottom/25)*25;y<=T.bounds.top;y+=25){const [,py]=T.xy(0,y);ctx.beginPath();ctx.moveTo(0,py);ctx.lineTo(T.w,py);ctx.stroke();ctx.fillText(String(y),6,py-3);}
     polyline(WAYPOINTS,T,"#49ae78",1.7);
     WAYPOINTS.forEach(([x,y],i)=>dot(x,y,T,i===sim.target?"#149454":"#71c797",i===sim.target?4.2:2.5));
     polyline(sim.pathTrue,T,"#263e4b",2);
