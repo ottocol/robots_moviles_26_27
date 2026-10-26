@@ -76,6 +76,24 @@ ros2 run nav2_map_server map_saver_cli -f mimapa  #o el nombre que le quieras da
 
 **Entregable** en la documentación escrita incluye una imagen del mapa generado. Explica brevemente qué tal se ha generado el mapa ¿te parece un buen mapa, tiene artefactos (elementos que no son reales)?.
 
+Los mapas generados con el algoritmo estándar suelen tener ruido en forma de puntos negros aislados que luego interfieren en la fase de navegación. Si quieres limpiar el mapa puedes hacerlo con este *script*, que debería estar copiado en el robot, pero también lo tienes aquí:
+
+```python
+#archivo limpiarMapa.py
+import sys, cv2, numpy as np
+img = cv2.imread(sys.argv[1], cv2.IMREAD_UNCHANGED)
+min_area = int(sys.argv[3]) if len(sys.argv) > 3 else 7
+occ = (img < 100).astype(np.uint8)            # ocupado = oscuro
+n, lab, stats, _ = cv2.connectedComponentsWithStats(occ, connectivity=8)
+small = stats[:, cv2.CC_STAT_AREA] < min_area
+small[0] = False                               # el fondo no
+img[small[lab]] = 254                          # pasa a libre
+cv2.imwrite(sys.argv[2], img)
+```
+
+Puedes ejecutarlo con `python3 limpiarMapa.py nombre_mapa.pgm nombre_mapa_limpio.pgm`. Una vez que compruebes que el mapa se ha limpiado correctamente puedes sustituir el fichero pgm original por el del mapa limpio.
+
+
 ## Localización
 
 ```bash
