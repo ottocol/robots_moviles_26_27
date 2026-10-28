@@ -1,15 +1,450 @@
 <!doctype html>
 <html lang="es">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>FastSLAM con rejillas</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>body{margin:0}[hidden]{display:none!important}img{max-width:100%}</style>
+</head>
+<body>
+<title>FastSLAM con rejillas</title>
   <meta name="claude:viewport-fit-sides" content="cover">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
-  <link rel="stylesheet" href="css/demo.css">
-</head>
-<body>
+  <style>
+/* Layout: banco de pruebas; dos lienzos (mundo / mapa de la partícula) sobre una consola de mandos y una tira de miniaturas */
+:root {
+  --bg: #f3f5f7;
+  --panel: #ffffff;
+  --ink: #18212b;
+  --muted: #5b6876;
+  --line: #d7dde4;
+  --accent: #0f6fb8;
+  --accent-ink: #ffffff;
+  --warn: #b5560b;
+  --warn-bg: #fff1e3;
+  --truth: #1d8a4e;
+  --odo: #c0392b;
+  --particle: #0f6fb8;
+  --wall: #18212b;
+  --scan: #d98a00;
+  --font-body: "IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --font-mono: "IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #11161c;
+    --panel: #18202a;
+    --ink: #e4e9ef;
+    --muted: #93a1b0;
+    --line: #2b3643;
+    --accent: #4da3e6;
+    --accent-ink: #0b1622;
+    --warn: #f0a050;
+    --warn-bg: #3a2614;
+    --truth: #4cc985;
+    --odo: #ff7a6b;
+    --particle: #5fb2f0;
+    --wall: #d6dde6;
+    --scan: #f2b632;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg: #11161c;
+  --panel: #18202a;
+  --ink: #e4e9ef;
+  --muted: #93a1b0;
+  --line: #2b3643;
+  --accent: #4da3e6;
+  --accent-ink: #0b1622;
+  --warn: #f0a050;
+  --warn-bg: #3a2614;
+  --truth: #4cc985;
+  --odo: #ff7a6b;
+  --particle: #5fb2f0;
+  --wall: #d6dde6;
+  --scan: #f2b632;
+  color-scheme: dark;
+}
+
+[hidden] {
+  display: none!important;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+.wrap {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding-block: 20px 40px;
+  padding-left: max(16px,env(safe-area-inset-left,0px));
+  padding-right: max(16px,env(safe-area-inset-right,0px));
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+header h1 {
+  font-size: 1.55rem;
+  font-weight: 600;
+  margin: 0;
+  text-wrap: balance;
+}
+
+header p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  max-width: 75ch;
+}
+
+.views {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+@media (max-width:820px) {
+  .views {
+    grid-template-columns: 1fr;
+  }
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.panel h2 {
+  font-size: .78rem;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--muted);
+  margin: 0;
+  font-weight: 600;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.panel h2 span {
+  text-transform: none;
+  letter-spacing: 0;
+  font-family: var(--font-mono);
+  color: var(--ink);
+  font-weight: 500;
+}
+
+canvas.view {
+  width: 100%;
+  aspect-ratio: 9/7;
+  max-width: 100%;
+  display: block;
+  border-radius: 4px;
+  touch-action: manipulation;
+}
+
+#worldCanvas {
+  cursor: crosshair;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  font-size: .8rem;
+  color: var(--muted);
+}
+
+.legend i {
+  display: inline-block;
+  width: 14px;
+  height: 3px;
+  vertical-align: middle;
+  margin-right: 5px;
+  border-radius: 2px;
+}
+
+.swatch-truth {
+  background: var(--truth);
+}
+
+.swatch-odometry {
+  background: var(--odo);
+}
+
+.swatch-walls {
+  background: var(--odo);
+  opacity: .6;
+}
+
+.swatch-particle {
+  background: var(--particle);
+}
+
+.swatch-scan {
+  background: var(--scan);
+}
+
+#seed {
+  width: 6.5em;
+}
+
+.console {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 16px;
+  align-items: start;
+}
+
+@media (max-width:980px) {
+  .console {
+    grid-template-columns: 1fr;
+  }
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.group h3 {
+  margin: 0;
+  font-size: .72rem;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.pad {
+  display: grid;
+  grid-template-columns: repeat(3,48px);
+  grid-template-rows: repeat(2,44px);
+  gap: 6px;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+button {
+  font: inherit;
+  font-size: .9rem;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--ink);
+  border-radius: 6px;
+  padding: 8px 12px;
+  cursor: pointer;
+  min-height: 40px;
+}
+
+button:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+button:focus-visible,select:focus-visible,input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+button:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+
+button.primary {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: var(--accent);
+  font-weight: 500;
+}
+
+button.warn {
+  background: var(--warn);
+  color: var(--panel);
+  border-color: var(--warn);
+  font-weight: 600;
+}
+
+.pad button {
+  padding: 0;
+  font-size: 1.1rem;
+}
+
+label {
+  font-size: .88rem;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+select,input[type=range] {
+  font: inherit;
+  font-size: .88rem;
+  accent-color: var(--accent);
+}
+
+select,input[type=number] {
+  background: var(--panel);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 5px 6px;
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(2,minmax(0,1fr));
+  gap: 6px 16px;
+  font-size: .85rem;
+  min-width: 240px;
+}
+
+.stats div {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  border-bottom: 1px dashed var(--line);
+  padding-bottom: 3px;
+}
+
+.stats b {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+#neffCanvas {
+  width: 100%;
+  height: 70px;
+  display: block;
+}
+
+.banner {
+  background: var(--warn-bg);
+  border: 1px solid var(--warn);
+  border-radius: 8px;
+  padding: 10px 14px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.banner p {
+  margin: 0;
+  flex: 1 1 320px;
+  min-width: 0;
+}
+
+.thumbs {
+  display: grid;
+  grid-template-columns: repeat(auto-fill,minmax(96px,1fr));
+  gap: 8px;
+  max-height: 360px;
+  overflow: auto;
+  padding: 2px;
+}
+
+.thumb {
+  border: 2px solid transparent;
+  border-radius: 5px;
+  padding: 2px;
+  background: var(--bg);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+}
+
+.thumb.selected {
+  border-color: var(--accent);
+}
+
+.thumb canvas {
+  width: 100%;
+  aspect-ratio: 9/7;
+  display: block;
+  image-rendering: pixelated;
+}
+
+.thumb small {
+  font-family: var(--font-mono);
+  font-size: .68rem;
+  color: var(--muted);
+  display: flex;
+  justify-content: space-between;
+}
+
+.weight-bar {
+  height: 4px;
+  background: var(--line);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.weight-bar i {
+  display: block;
+  height: 100%;
+  background: var(--particle);
+}
+
+.notes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit,minmax(280px,1fr));
+  gap: 16px;
+}
+
+.notes p,.notes li {
+  font-size: .88rem;
+  color: var(--ink);
+  max-width: 68ch;
+}
+
+.notes ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: .85em;
+}
+
+kbd {
+  font-family: var(--font-mono);
+  font-size: .78em;
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  border-radius: 3px;
+  padding: 0 4px;
+}
+</style>
+
 <div class="wrap">
   <header>
     <h1>FastSLAM con rejillas de ocupación</h1>
@@ -105,6 +540,25 @@
         <button id="restart">Reiniciar</button>
       </div>
       <div class="row">
+        <label>Láser
+          <select id="laserRange" aria-label="Alcance del láser">
+            <option value="5" selected>5 m</option>
+            <option value="3">3 m</option>
+            <option value="2">2 m</option>
+          </select>
+          <select id="laserFieldOfView" aria-label="Campo de visión del láser">
+            <option value="360" selected>360°</option>
+            <option value="180">180° (delante)</option>
+          </select>
+        </label>
+        <label>Entorno
+          <select id="worldDetails">
+            <option value="1" selected>con detalles</option>
+            <option value="0">pasillos lisos</option>
+          </select>
+        </label>
+      </div>
+      <div class="row">
         <label>Ruido del modelo de movimiento
           <input type="range" id="motionNoise" min="0.5" max="3" step="0.25" value="2">
           <span class="mono" id="motionNoiseValue">2</span>
@@ -112,7 +566,7 @@
       </div>
       <div class="row">
         <label><input type="checkbox" id="pauseBeforeClosure" checked> Parar antes de cerrar el ciclo</label>
-        <label><input type="checkbox" id="improvedProposal"> Propuesta mejorada (scan matching)</label>
+        <label><input type="checkbox" id="improvedProposal"> Propuesta mejorada (odometría + scan matching, como GMapping)</label>
       </div>
       <div class="row">
         <label><input type="checkbox" id="followBest" checked> Mapa grande: siempre la mejor partícula</label>
@@ -147,8 +601,9 @@
     <div>
       <h2>Qué se está simulando</h2>
       <ul>
-        <li>Planta de 16 × 12 m con un bloque central; la ruta da una vuelta completa (unos 240 pasos de 25 cm o 10°).</li>
-        <li>Láser de 360° con 72 haces, alcance 5 m y ruido de 3 cm.</li>
+        <li>Planta de 16 × 12 m con un bloque central; la ruta da una vuelta completa (unos 240 pasos de 25 cm o 10°). «Con detalles» añade armarios, columnas y entrantes; con «pasillos lisos» solo quedan paredes rectas.</li>
+        <li>Láser de 72 haces repartidos en su campo de visión (360° o 180° hacia delante), alcance de 2, 3 o 5 m y ruido de 3 cm.</li>
+        <li>Propuesta mejorada, como en GMapping: cada partícula muestrea su pose del producto de la odometría y el láser, τ(x) ∝ p(z | x, m) · p(x | x<sub>t−1</sub>, u). Se busca el máximo de τ, se ajusta una gaussiana con unos puntos alrededor y se muestrea de ella; el peso se multiplica por la suma de τ en esos puntos. En un pasillo liso el láser no distingue posiciones a lo largo y manda la odometría.</li>
         <li>La odometría real gira un 5 % de más, así que la estimación solo con odometría acumula unos 15° al dar la vuelta.</li>
         <li>Cada partícula: muestrea el modelo de movimiento, se pondera con el modelo de punto final sobre <em>su</em> mapa anterior y luego actualiza su mapa con log-odds (+0,9 ocupado, −0,4 libre).</li>
         <li>Se remuestrea (baja varianza) cuando Neff &lt; N/2. Las copias de una misma madre comparten trayectoria; la última se queda con el mapa original y las demás lo copian.</li>
@@ -161,11 +616,1603 @@
       <h2>Memoria</h2>
       <p id="memoryText"></p>
       <p>La verosimilitud está suavizada (exponente 0,1) para que el filtro no colapse en cada paso; sin ese suavizado, 72 haces bastan para que una sola partícula se lleve casi todo el peso.</p>
+      <p>Para romper el filtro: pasillos lisos y láser de 2 m y 180°. Visto desde el robot, un tramo recto es igual a cualquier otro, así que el error a lo largo del pasillo se acumula como con la odometría y el cierre no siempre lo arregla. Con 10 partículas y propuesta mejorada falla en la mitad de las semillas, y con 30 sin propuesta mejorada en 3 de cada 8. Con el mismo láser en el entorno con detalles no falla nunca.</p>
       <p>Teclado: <kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> mover, <kbd>Espacio</kbd> recorrer/pausar, <kbd>Intro</kbd> paso o aplicar escaneo, <kbd>Retroceso</kbd> deshacer un paso.</p>
     </div>
   </section>
 </div>
 
-<script type="module" src="js/ui/main.js"></script>
+<script type="module">
+// ===== js/slam/random.js =====
+// Generador pseudoaleatorio con semilla (mulberry32).
+// Todo el azar de la simulación pasa por aquí: con la misma semilla y las mismas
+// órdenes, la ejecución se repite exactamente.
+
+class Random {
+  constructor(seed) {
+    this.state = seed | 0;
+  }
+
+  /** Muestra uniforme en [0, 1). */
+  uniform() {
+    this.state = (this.state + 0x6d2b79f5) | 0;
+    const a = this.state;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  }
+
+  /** Muestra de una normal N(0, 1) por Box-Muller. */
+  gaussian() {
+    let u = 0;
+    while (u === 0) u = this.uniform();
+    return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * this.uniform());
+  }
+}
+
+// ===== js/slam/world.js =====
+// El mundo simulado: una planta de 16 x 12 m con un bloque central, de modo que el
+// pasillo da la vuelta completa y el robot puede cerrar un ciclo.
+// Coordenadas en metros, con el eje y hacia arriba; los ángulos, en radianes.
+
+const DEG = Math.PI / 180;
+
+/** Normaliza un ángulo a (-π, π]. */
+function wrapAngle(angle) {
+  return Math.atan2(Math.sin(angle), Math.cos(angle));
+}
+
+const WORLD = { width: 16, height: 12 };
+
+// Zona que cubre cada mapa de ocupación: el mundo más 1 m de margen por cada lado,
+// para que una partícula desviada no se salga del mapa.
+const MAP_BOUNDS = { x0: -1, y0: -1, width: 18, height: 14 };
+
+// Obstáculos como rectángulos [x0, y0, x1, y1]: el bloque central y, si el entorno
+// tiene detalles, armarios, columnas y entrantes que dan referencias al láser.
+const CENTRAL_BLOCK = [3, 3, 13, 9];
+const DETAILS = [
+  // pasillo sur
+  [5, 0, 6, 0.6], [9.5, 0, 11, 0.4], [12, 2.4, 12.4, 2.8],
+  // pasillo este
+  [15.4, 4, 16, 5.5], [13, 6.5, 13.5, 7],
+  // pasillo norte
+  [10, 11.4, 11, 12], [6, 11.5, 8, 12], [4, 9.1, 4.4, 9.5],
+  // pasillo oeste
+  [0, 4, 0.5, 5], [0, 7.5, 0.7, 8.2], [2.6, 5.5, 3, 6],
+];
+
+function rectangleSides([x0, y0, x1, y1]) {
+  return [[x0, y0, x1, y0], [x1, y0, x1, y1], [x1, y1, x0, y1], [x0, y1, x0, y0]];
+}
+
+// Obstáculos y paredes del entorno elegido; los fija configureWorld() al empezar.
+// Paredes: segmentos [xa, ya, xb, yb] del contorno exterior y de los obstáculos.
+let OBSTACLES = [];
+let WALLS = [];
+
+/** Con detalles o con pasillos lisos (donde el láser no distingue posiciones a lo largo). */
+function configureWorld({ worldDetails }) {
+  OBSTACLES = worldDetails ? [CENTRAL_BLOCK, ...DETAILS] : [CENTRAL_BLOCK];
+  WALLS = [
+    ...rectangleSides([0, 0, WORLD.width, WORLD.height]),
+    ...OBSTACLES.flatMap(rectangleSides),
+  ];
+}
+
+const START_POSE = Object.freeze({ x: 1.5, y: 1.5, theta: 0 });
+
+// Una vuelta en sentido antihorario y unos metros más, para recorrer de nuevo
+// la zona inicial después de cerrar el ciclo.
+const LOOP_ROUTE = [[14.5, 1.5], [14.5, 10.5], [1.5, 10.5], [1.5, 1.5], [9, 1.5]];
+
+/**
+ * Distancia desde (x, y) a la primera pared en la dirección `angle`
+ * (Infinity si no hay ninguna).
+ */
+function castRay(x, y, angle) {
+  const dx = Math.cos(angle);
+  const dy = Math.sin(angle);
+  let nearest = Infinity;
+  for (const [xa, ya, xb, yb] of WALLS) {
+    // Resolver (x, y) + t·(dx, dy) = (xa, ya) + u·(ex, ey) con t > 0 y 0 ≤ u ≤ 1
+    const ex = xb - xa;
+    const ey = yb - ya;
+    const den = dx * ey - dy * ex;
+    if (Math.abs(den) < 1e-12) continue; // paralelos
+    const qx = xa - x;
+    const qy = ya - y;
+    const t = (qx * ey - qy * ex) / den;
+    const u = (qx * dy - qy * dx) / den;
+    if (t > 1e-9 && u >= 0 && u <= 1 && t < nearest) nearest = t;
+  }
+  return nearest;
+}
+
+// ===== js/slam/laser.js =====
+// Láser simulado: 72 haces repartidos en su campo de visión y ruido gaussiano de 3 cm.
+// Alcance y campo de visión se eligen en la página (por defecto 5 m y 360°); la
+// simulación los fija al empezar con configureLaser().
+
+const LASER = { beamCount: 72, maxRange: 5, fieldOfView: 2 * Math.PI, rangeNoise: 0.03 };
+
+function configureLaser({ laserRange, laserFieldOfView }) {
+  LASER.maxRange = laserRange;
+  LASER.fieldOfView = laserFieldOfView;
+}
+
+/** Ángulo del haz i respecto al frente del robot. */
+function beamAngle(i) {
+  if (LASER.fieldOfView >= 2 * Math.PI - 1e-9) {
+    return -Math.PI + i * 2 * Math.PI / LASER.beamCount;   // vuelta completa, sin repetir el haz de atrás
+  }
+  return -LASER.fieldOfView / 2 + i * LASER.fieldOfView / (LASER.beamCount - 1);
+}
+
+/**
+ * Escaneo z_t desde la pose real. Devuelve las distancias y, para cada haz,
+ * si ha chocado con algo (hit = 1) o ha llegado al alcance máximo (hit = 0).
+ */
+function simulateScan(pose, rng) {
+  const ranges = new Float32Array(LASER.beamCount);
+  const hit = new Uint8Array(LASER.beamCount);
+  for (let i = 0; i < LASER.beamCount; i++) {
+    const distance = castRay(pose.x, pose.y, pose.theta + beamAngle(i));
+    if (distance < LASER.maxRange) {
+      ranges[i] = Math.max(0.05, distance + rng.gaussian() * LASER.rangeNoise);
+      hit[i] = 1;
+    } else {
+      ranges[i] = LASER.maxRange;
+    }
+  }
+  return { ranges, hit };
+}
+
+/** Puntos finales de los haces con impacto, vistos desde `pose`: [{ x, y, beam }]. */
+function scanEndpoints(pose, scan) {
+  const points = [];
+  for (let i = 0; i < LASER.beamCount; i++) {
+    if (!scan.hit[i]) continue;
+    const angle = pose.theta + beamAngle(i);
+    points.push({
+      x: pose.x + scan.ranges[i] * Math.cos(angle),
+      y: pose.y + scan.ranges[i] * Math.sin(angle),
+      beam: i,
+    });
+  }
+  return points;
+}
+
+// ===== js/slam/occupancy-grid.js =====
+// Mapa de ocupación en log-odds: l = log(p / (1 - p)). Una celda desconocida vale 0 (p = 0,5).
+
+// Modelo inverso del sensor: cuánto suma cada observación al log-odds de la celda.
+const INVERSE_SENSOR_MODEL = {
+  occupied: 0.9,   // celda donde termina un haz con impacto
+  free: -0.4,      // celdas que atraviesa el haz
+  limit: 6,        // saturación: |l| ≤ 6 (p entre 0,0025 y 0,9975)
+};
+
+class OccupancyGrid {
+  constructor(resolution, logOdds = null) {
+    this.resolution = resolution;
+    this.nx = Math.round(MAP_BOUNDS.width / resolution);
+    this.ny = Math.round(MAP_BOUNDS.height / resolution);
+    // Float32: 4 bytes por celda
+    this.logOdds = logOdds ? new Float32Array(logOdds) : new Float32Array(this.nx * this.ny);
+  }
+
+  /** Bytes que ocupa un mapa con esta resolución. */
+  static bytesFor(resolution) {
+    return Math.round(MAP_BOUNDS.width / resolution) * Math.round(MAP_BOUNDS.height / resolution) * 4;
+  }
+
+  clone() {
+    return new OccupancyGrid(this.resolution, this.logOdds);
+  }
+
+  /** Índice de la celda que contiene (x, y), o -1 si cae fuera del mapa. */
+  cellIndex(x, y) {
+    const i = Math.floor((x - MAP_BOUNDS.x0) / this.resolution);
+    const j = Math.floor((y - MAP_BOUNDS.y0) / this.resolution);
+    if (i < 0 || j < 0 || i >= this.nx || j >= this.ny) return -1;
+    return j * this.nx + i;
+  }
+
+  /**
+   * Integra un escaneo tomado desde `pose`: las celdas recorridas por cada haz se
+   * vuelven más libres y la celda del impacto más ocupada.
+   */
+  integrateScan(pose, scan) {
+    const { occupied, free, limit } = INVERSE_SENSOR_MODEL;
+    const step = this.resolution * 0.5;
+    const cells = this.logOdds;
+    for (let b = 0; b < LASER.beamCount; b++) {
+      const angle = pose.theta + beamAngle(b);
+      const cos = Math.cos(angle);
+      const sin = Math.sin(angle);
+      const range = scan.ranges[b];
+
+      // Recorrer el haz a pasos de media celda, sin actualizar dos veces la misma
+      let previous = -1;
+      for (let t = 0; t < range - this.resolution; t += step) {
+        const k = this.cellIndex(pose.x + cos * t, pose.y + sin * t);
+        if (k >= 0 && k !== previous) {
+          cells[k] = Math.max(-limit, cells[k] + free);
+          previous = k;
+        }
+      }
+
+      if (scan.hit[b]) {
+        const k = this.cellIndex(pose.x + cos * range, pose.y + sin * range);
+        if (k >= 0) cells[k] = Math.min(limit, cells[k] + occupied);
+      }
+    }
+  }
+}
+
+// ===== js/slam/motion.js =====
+// Movimiento del robot. Una orden u = { rotation, translation } significa:
+// primero girar `rotation` radianes y luego avanzar `translation` metros.
+
+// La rueda real gira un 5 % más de lo que dice la odometría: un error sistemático
+// que hace que la estimación solo con odometría se desvíe al dar la vuelta.
+const ODOMETRY_BIAS = 0.05;
+
+/**
+ * Desviaciones típicas del modelo de movimiento para la orden u.
+ * `noiseScale` las multiplica todas (control «Ruido del modelo»).
+ */
+function motionSigmas(u, noiseScale) {
+  return {
+    rotation: noiseScale * (0.08 * Math.abs(u.rotation) + 0.04 * Math.abs(u.translation) + 0.004),
+    translation: noiseScale * (0.06 * Math.abs(u.translation) + 0.005),
+  };
+}
+
+/** Modelo de movimiento del filtro: muestrea x_t ~ p(x_t | u_t, x_{t-1}). */
+function sampleMotionModel(pose, u, noiseScale, rng) {
+  const sigma = motionSigmas(u, noiseScale);
+  const rotation = u.rotation + rng.gaussian() * sigma.rotation;
+  const translation = u.translation + rng.gaussian() * sigma.translation;
+  const theta = wrapAngle(pose.theta + rotation);
+  return {
+    x: pose.x + translation * Math.cos(theta),
+    y: pose.y + translation * Math.sin(theta),
+    theta,
+  };
+}
+
+/** Movimiento real del robot: la orden con sesgo y ruido. No atraviesa paredes. */
+function moveRealRobot(pose, u, rng) {
+  const rotation = u.rotation * (1 + ODOMETRY_BIAS) +
+    rng.gaussian() * (0.03 * Math.abs(u.rotation) + 0.01 * Math.abs(u.translation));
+  const translation = u.translation * (1 + rng.gaussian() * 0.03);
+  const theta = wrapAngle(pose.theta + rotation);
+  const moved = { x: pose.x, y: pose.y, theta };
+  if (translation !== 0) {
+    const heading = translation > 0 ? theta : theta + Math.PI;
+    const clearance = castRay(pose.x, pose.y, heading);
+    if (clearance > Math.abs(translation) + 0.15) {
+      moved.x = pose.x + translation * Math.cos(theta);
+      moved.y = pose.y + translation * Math.sin(theta);
+    }
+  }
+  return moved;
+}
+
+/**
+ * log p(x | x_{t-1}, u), aproximada por una gaussiana alrededor de la odometría sin
+ * ruido `expected`: a lo largo de la marcha, en lateral (el error de giro por la
+ * distancia recorrida) y en orientación. La usa la propuesta mejorada.
+ */
+function motionLogDensity(pose, expected, u, noiseScale) {
+  const sigma = motionSigmas(u, noiseScale);
+  const sigmaLateral = sigma.rotation * Math.abs(u.translation) + 0.005 * noiseScale;
+  const c = Math.cos(expected.theta);
+  const s = Math.sin(expected.theta);
+  const dx = pose.x - expected.x;
+  const dy = pose.y - expected.y;
+  const along = (c * dx + s * dy) / sigma.translation;
+  const lateral = (-s * dx + c * dy) / sigmaLateral;
+  const turn = wrapAngle(pose.theta - expected.theta) / sigma.rotation;
+  return -0.5 * (along * along + lateral * lateral + turn * turn);
+}
+
+/** Integración de la odometría sin ruido (la estimación «solo odometría»). */
+function integrateOdometry(pose, u) {
+  const theta = wrapAngle(pose.theta + u.rotation);
+  return {
+    x: pose.x + u.translation * Math.cos(theta),
+    y: pose.y + u.translation * Math.sin(theta),
+    theta,
+  };
+}
+
+// ===== js/slam/observation-model.js =====
+// Modelo de observación p(z_t | x_t, m) por punto final del haz, y scan matching.
+
+const LIKELIHOOD = {
+  zHit: 0.9,       // peso de «el punto final cae en una celda ocupada»
+  zRandom: 0.1,    // peso de una medida aleatoria (evita probabilidades nulas)
+  // Exponente que suaviza la verosimilitud: con 72 haces, sin él una sola
+  // partícula se lleva casi todo el peso en cada paso.
+  temperature: 0.1,
+};
+
+/**
+ * log p(z | x, m). Para cada haz con impacto se toma la probabilidad de ocupación
+ * más alta en la vecindad 3x3 del punto final (tolera ±1 celda de error).
+ */
+function scanLogLikelihood(grid, pose, scan) {
+  const { zHit, zRandom } = LIKELIHOOD;
+  const { nx, ny, resolution, logOdds } = grid;
+  const cosTheta = Math.cos(pose.theta);
+  const sinTheta = Math.sin(pose.theta);
+  let total = 0;
+
+  for (let b = 0; b < LASER.beamCount; b++) {
+    if (!scan.hit[b]) continue;
+    // Punto final: rotar la dirección del haz con la orientación de la pose
+    const cosBeam = Math.cos(beamAngle(b));
+    const sinBeam = Math.sin(beamAngle(b));
+    const range = scan.ranges[b];
+    const ex = pose.x + range * (cosTheta * cosBeam - sinTheta * sinBeam);
+    const ey = pose.y + range * (sinTheta * cosBeam + cosTheta * sinBeam);
+    const i = Math.floor((ex - MAP_BOUNDS.x0) / resolution);
+    const j = Math.floor((ey - MAP_BOUNDS.y0) / resolution);
+
+    let maxLogOdds = -Infinity;
+    for (let jj = j - 1; jj <= j + 1; jj++) {
+      if (jj < 0 || jj >= ny) continue;
+      for (let ii = i - 1; ii <= i + 1; ii++) {
+        if (ii < 0 || ii >= nx) continue;
+        maxLogOdds = Math.max(maxLogOdds, logOdds[jj * nx + ii]);
+      }
+    }
+    // Fuera del mapa: desconocido
+    const pOccupied = maxLogOdds === -Infinity ? 0.5 : 1 / (1 + Math.exp(-maxLogOdds));
+    total += Math.log(zRandom + zHit * pOccupied);
+  }
+  return total;
+}
+
+/**
+ * Ascenso de colina: busca cerca de `start` la pose que maximiza `objective`.
+ * Pasos iniciales de 8 cm y 2°, que se van dividiendo por 2 en cada una de las 4 rondas.
+ */
+function hillClimb(objective, start) {
+  let best = { x: start.x, y: start.y, theta: start.theta };
+  let bestScore = objective(best);
+  let stepXY = 0.08;
+  let stepTheta = 2 * DEG;
+  const moves = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
+
+  for (let round = 0; round < 4; round++) {
+    let improved = true;
+    for (let iteration = 0; improved && iteration < 8; iteration++) {
+      improved = false;
+      for (const [mx, my, mt] of moves) {
+        const candidate = {
+          x: best.x + mx * stepXY,
+          y: best.y + my * stepXY,
+          theta: best.theta + mt * stepTheta,
+        };
+        const score = objective(candidate);
+        if (score > bestScore) {
+          bestScore = score;
+          best = candidate;
+          improved = true;
+        }
+      }
+    }
+    stepXY /= 2;
+    stepTheta /= 2;
+  }
+  return best;
+}
+
+// ===== js/slam/improved-proposal.js =====
+// Propuesta mejorada, como en GMapping (Grisetti et al., 2007). En vez de muestrear
+// solo del modelo de movimiento, cada partícula muestrea de
+//     τ(x) ∝ p(z | x, m) · p(x | x_{t-1}, u)
+// es decir, del producto del láser y la odometría. En un pasillo sin detalles el láser
+// no distingue posiciones a lo largo del pasillo y manda la odometría.
+//   1. Buscar el máximo de τ por ascenso de colina, partiendo de la odometría.
+//   2. Evaluar τ en unos puntos alrededor del máximo.
+//   3. Ajustar una gaussiana a esos puntos y muestrear de ella la nueva pose.
+//   4. El peso se multiplica por Σ τ(x_k): cuánto encaja el escaneo en el mapa en esa zona.
+
+// Puntos alrededor del máximo: [dx, dy, dθ] en metros y radianes
+const PROPOSAL_OFFSETS = [[0, 0, 0]];
+for (const d of [-1, 1]) {
+  PROPOSAL_OFFSETS.push([0.05 * d, 0, 0], [0, 0.05 * d, 0], [0, 0, 1 * DEG * d]);
+  PROPOSAL_OFFSETS.push([0.035 * d, 0.035 * d, 0], [0.035 * d, -0.035 * d, 0]);
+}
+
+/**
+ * Nueva pose y log-peso de una partícula con la propuesta mejorada.
+ * @param {object} previousPose  pose de la partícula en t−1
+ */
+function sampleImprovedProposal(grid, previousPose, u, scan, noiseScale, rng) {
+  const expected = integrateOdometry(previousPose, u);
+  const logTau = (pose) => LIKELIHOOD.temperature * scanLogLikelihood(grid, pose, scan) +
+    motionLogDensity(pose, expected, u, noiseScale);
+
+  const mode = hillClimb(logTau, expected);
+
+  // Puntos alrededor del máximo y su τ (normalizada restando el máximo)
+  const points = PROPOSAL_OFFSETS.map(([dx, dy, dt]) =>
+    ({ x: mode.x + dx, y: mode.y + dy, theta: wrapAngle(mode.theta + dt) }));
+  const logValues = points.map(logTau);
+  const maxLog = Math.max(...logValues);
+  const tau = logValues.map((v) => Math.exp(v - maxLog));
+  const tauSum = tau.reduce((a, b) => a + b, 0);
+
+  // Gaussiana ajustada: media y covarianza ponderadas por τ (en [x, y, θ] relativos al máximo)
+  const offsets = points.map((p) => [p.x - mode.x, p.y - mode.y, wrapAngle(p.theta - mode.theta)]);
+  const mean = [0, 1, 2].map((k) => offsets.reduce((sum, o, i) => sum + tau[i] * o[k], 0) / tauSum);
+  const cov = [0, 1, 2].map((r) => [0, 1, 2].map((c) =>
+    offsets.reduce((sum, o, i) => sum + tau[i] * (o[r] - mean[r]) * (o[c] - mean[c]), 0) / tauSum));
+  cov[0][0] += 1e-6; cov[1][1] += 1e-6; cov[2][2] += 1e-8;  // que nunca sea singular
+
+  // Muestra x = media + L·n, con L la descomposición de Cholesky de la covarianza
+  const L = cholesky3(cov);
+  const n = [rng.gaussian(), rng.gaussian(), rng.gaussian()];
+  const sample = [0, 1, 2].map((r) => mean[r] + L[r][0] * n[0] + L[r][1] * n[1] + L[r][2] * n[2]);
+
+  return {
+    pose: { x: mode.x + sample[0], y: mode.y + sample[1], theta: wrapAngle(mode.theta + sample[2]) },
+    logWeight: maxLog + Math.log(tauSum),
+  };
+}
+
+/** Cholesky de una matriz 3x3 simétrica definida positiva: A = L·Lᵀ. */
+function cholesky3(A) {
+  const L = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+  for (let i = 0; i < 3; i++) {
+    for (let j = 0; j <= i; j++) {
+      let sum = A[i][j];
+      for (let k = 0; k < j; k++) sum -= L[i][k] * L[j][k];
+      L[i][j] = i === j ? Math.sqrt(Math.max(sum, 1e-12)) : sum / L[j][j];
+    }
+  }
+  return L;
+}
+
+// ===== js/slam/fastslam.js =====
+// FastSLAM con rejillas de ocupación (filtro de partículas Rao-Blackwellizado):
+// cada partícula es una hipótesis de trayectoria con su propio mapa.
+
+/**
+ * Una partícula: pose actual, peso, mapa y trayectoria.
+ * La trayectoria es una lista enlazada hacia atrás ({ x, y, previous }), así que
+ * las copias de una misma madre comparten todo el tramo anterior al remuestreo.
+ * `parentIndex` es la casilla que ocupaba la madre en la generación anterior.
+ */
+class Particle {
+  constructor(pose, weight, map, trajectory, parentIndex) {
+    this.pose = pose;
+    this.weight = weight;
+    this.map = map;
+    this.trajectory = trajectory;
+    this.parentIndex = parentIndex;
+  }
+
+  /** Poses de la trayectoria, de la más reciente a la inicial. */
+  trajectoryPoints() {
+    const points = [];
+    for (let node = this.trajectory; node; node = node.previous) points.push(node);
+    return points;
+  }
+}
+
+class FastSlamFilter {
+  constructor({ particleCount, resolution, startPose, rng }) {
+    this.rng = rng;
+    const emptyMap = new OccupancyGrid(resolution);
+    const start = { x: startPose.x, y: startPose.y, previous: null };
+    this.particles = [];
+    for (let i = 0; i < particleCount; i++) {
+      const map = i === 0 ? emptyMap : emptyMap.clone();
+      this.particles.push(new Particle({ ...startPose }, 1 / particleCount, map, start, i));
+    }
+  }
+
+  get count() {
+    return this.particles.length;
+  }
+
+  /**
+   * Predicción: cada partícula muestrea su nueva pose del modelo de movimiento.
+   * Se guardan la pose anterior y la orden: la propuesta mejorada vuelve a muestrear
+   * desde ahí combinando odometría y láser.
+   */
+  predict(u, noiseScale) {
+    this.lastCommand = { u, noiseScale };
+    for (const particle of this.particles) {
+      particle.previousPose = particle.pose;
+      particle.pose = sampleMotionModel(particle.pose, u, noiseScale, this.rng);
+    }
+  }
+
+  /**
+   * Corrección con el escaneo z_t:
+   *  1. (opcional) propuesta mejorada: volver a muestrear la pose combinando odometría y
+   *     láser, y ponderar con Σ τ (ver improved-proposal.js);
+   *  2. si no, ponderar con p(z_t | x_t, m_{t-1}) usando el mapa ANTERIOR de la partícula;
+   *  3. integrar el escaneo en el mapa de cada partícula;
+   *  4. remuestrear si Neff < N/2.
+   */
+  correct(scan, { improvedProposal }) {
+    const N = this.count;
+    const logLikelihoods = new Float64Array(N);
+
+    for (let i = 0; i < N; i++) {
+      const particle = this.particles[i];
+      if (improvedProposal && particle.previousPose) {
+        const { u, noiseScale } = this.lastCommand;
+        const proposal = sampleImprovedProposal(
+          particle.map, particle.previousPose, u, scan, noiseScale, this.rng);
+        particle.pose = proposal.pose;
+        logLikelihoods[i] = proposal.logWeight;
+      } else {
+        logLikelihoods[i] = LIKELIHOOD.temperature * scanLogLikelihood(particle.map, particle.pose, scan);
+      }
+    }
+
+    this.#multiplyWeights(logLikelihoods);
+    const neff = this.effectiveSampleSize();
+
+    for (const particle of this.particles) {
+      particle.map.integrateScan(particle.pose, scan);
+      particle.trajectory = { x: particle.pose.x, y: particle.pose.y, previous: particle.trajectory };
+    }
+
+    const resampled = neff < N / 2;
+    const mapsCopied = resampled ? this.#resample() : 0;
+    return { neff, resampled, mapsCopied };
+  }
+
+  /** Pesos que tendrían las partículas con este escaneo, sin modificar nada. */
+  previewWeights(scan) {
+    const scaled = this.particles.map(
+      (p) => LIKELIHOOD.temperature * scanLogLikelihood(p.map, p.pose, scan));
+    const max = Math.max(...scaled);
+    const weights = this.particles.map((p, i) => p.weight * Math.exp(scaled[i] - max));
+    const sum = weights.reduce((a, b) => a + b, 0);
+    return weights.map((w) => w / sum);
+  }
+
+  /** Neff = 1 / Σ w_i² (con pesos normalizados). */
+  effectiveSampleSize() {
+    let sumOfSquares = 0;
+    for (const p of this.particles) sumOfSquares += p.weight * p.weight;
+    return 1 / sumOfSquares;
+  }
+
+  bestIndex() {
+    let best = 0;
+    this.particles.forEach((p, i) => {
+      if (p.weight > this.particles[best].weight) best = i;
+    });
+    return best;
+  }
+
+  /** w_i ← w_i · exp(log-verosimilitud), restando el máximo para evitar desbordes, y normalizar. */
+  #multiplyWeights(logLikelihoods) {
+    let max = -Infinity;
+    for (const l of logLikelihoods) if (l > max) max = l;
+    let sum = 0;
+    this.particles.forEach((p, i) => {
+      p.weight *= Math.exp(logLikelihoods[i] - max);
+      sum += p.weight;
+    });
+    for (const p of this.particles) p.weight /= sum;
+  }
+
+  /**
+   * Remuestreo de baja varianza. Las hijas de una misma madre comparten su
+   * trayectoria; la última hija se queda con el mapa de la madre y las demás
+   * reciben una copia. Devuelve cuántos mapas se han copiado.
+   */
+  #resample() {
+    const old = this.particles;
+    const N = old.length;
+
+    // Elegir N madres con un único número aleatorio
+    const parents = [];
+    const r = this.rng.uniform() / N;
+    let cumulative = old[0].weight;
+    let i = 0;
+    for (let m = 0; m < N; m++) {
+      const target = r + m / N;
+      while (target > cumulative && i < N - 1) {
+        i++;
+        cumulative += old[i].weight;
+      }
+      parents.push(i);
+    }
+
+    const children = new Int32Array(N);
+    for (const k of parents) children[k]++;
+    const assigned = new Int32Array(N);
+    let mapsCopied = 0;
+
+    this.particles = parents.map((k) => {
+      const mother = old[k];
+      assigned[k]++;
+      const isLastChild = assigned[k] === children[k];
+      if (!isLastChild) mapsCopied++;
+      return new Particle(
+        { ...mother.pose }, 1 / N,
+        isLastChild ? mother.map : mother.map.clone(),
+        mother.trajectory, k);
+    });
+    return mapsCopied;
+  }
+}
+
+// ===== js/slam/loop-closure.js =====
+// Detector de cierre de ciclo para la pausa didáctica. Hace trampa a propósito:
+// usa la pose real del simulador, que el filtro no conoce. Guarda en una rejilla
+// gruesa (25 cm) el último paso en que se vio cada celda; hay cierre cuando una
+// parte apreciable del escaneo cae en celdas que no se veían desde hace tiempo.
+
+class LoopClosureDetector {
+  constructor({ cellSize = 0.25, gapSteps = 40, minFraction = 0.12, minBeams = 4 } = {}) {
+    this.cellSize = cellSize;
+    this.gapSteps = gapSteps;          // pasos sin ver una celda para que cuente como «antigua»
+    this.minFraction = minFraction;    // fracción mínima de impactos en zona antigua
+    this.minBeams = minBeams;
+    this.nx = Math.round(MAP_BOUNDS.width / cellSize);
+    this.ny = Math.round(MAP_BOUNDS.height / cellSize);
+    this.lastSeen = new Int32Array(this.nx * this.ny).fill(-1);
+  }
+
+  #cell(point) {
+    const i = Math.floor((point.x - MAP_BOUNDS.x0) / this.cellSize);
+    const j = Math.floor((point.y - MAP_BOUNDS.y0) / this.cellSize);
+    if (i < 0 || j < 0 || i >= this.nx || j >= this.ny) return -1;
+    return j * this.nx + i;
+  }
+
+  /**
+   * Haces cuyo punto final cae en zona que no se veía desde hace más de `gapSteps`.
+   * Devuelve { beams, isClosure }.
+   */
+  check(truePose, scan, step) {
+    const endpoints = scanEndpoints(truePose, scan);
+    const beams = [];
+    for (const point of endpoints) {
+      const k = this.#cell(point);
+      if (k < 0) continue;
+      const seen = this.lastSeen[k];
+      if (seen >= 0 && step - seen > this.gapSteps) beams.push(point.beam);
+    }
+    const isClosure = beams.length >= Math.max(this.minBeams, this.minFraction * endpoints.length);
+    return { beams, isClosure };
+  }
+
+  markSeen(truePose, scan, step) {
+    for (const point of scanEndpoints(truePose, scan)) {
+      const k = this.#cell(point);
+      if (k >= 0) this.lastSeen[k] = step;
+    }
+  }
+}
+
+// ===== js/slam/route.js =====
+// Piloto automático: sigue los puntos de la ruta con órdenes de 10° o 25 cm como máximo.
+// Se guía por la pose real; es el «conductor», no parte del SLAM.
+
+const MAX_ROTATION = 10 * DEG;
+const MAX_TRANSLATION = 0.25;
+const ARRIVAL_RADIUS = 0.2;
+const TURN_IN_PLACE_ABOVE = 12 * DEG;
+
+const clamp = (value, limit) => Math.max(-limit, Math.min(limit, value));
+
+class RouteFollower {
+  constructor(waypoints) {
+    this.waypoints = waypoints;
+    this.index = 0;  // siguiente punto de la ruta
+  }
+
+  get finished() {
+    return this.index >= this.waypoints.length;
+  }
+
+  /** Siguiente orden u = { rotation, translation }, o null si la ruta ha terminado. */
+  nextCommand(pose) {
+    while (!this.finished) {
+      const [wx, wy] = this.waypoints[this.index];
+      const dx = wx - pose.x;
+      const dy = wy - pose.y;
+      const distance = Math.hypot(dx, dy);
+      if (distance < ARRIVAL_RADIUS) {
+        this.index++;
+        continue;
+      }
+      const headingError = wrapAngle(Math.atan2(dy, dx) - pose.theta);
+      if (Math.abs(headingError) > TURN_IN_PLACE_ABOVE) {
+        return { rotation: clamp(headingError, MAX_ROTATION), translation: 0 };
+      }
+      return {
+        rotation: clamp(headingError * 0.6, MAX_ROTATION),
+        translation: Math.min(MAX_TRANSLATION, distance),
+      };
+    }
+    return null;
+  }
+}
+
+// ===== js/slam/simulation.js =====
+// La simulación completa: robot real, odometría, láser, filtro FastSLAM y la pausa
+// antes de cerrar el ciclo. No sabe nada de la página; la interfaz solo la lee.
+
+class Simulation {
+  /**
+   * @param {object} config
+   * @param {number} config.seed              semilla del generador aleatorio
+   * @param {number} config.particleCount     número de partículas N
+   * @param {number} config.resolution        tamaño de celda en metros
+   * @param {boolean} config.improvedProposal usar scan matching en la propuesta
+   * @param {number} config.motionNoise       factor de ruido del modelo de movimiento
+   * @param {number} config.laserRange        alcance del láser en metros
+   * @param {number} config.laserFieldOfView  campo de visión del láser en radianes
+   * @param {boolean} config.worldDetails     entorno con detalles o con pasillos lisos
+   */
+  constructor(config) {
+    this.config = { ...config };
+    configureWorld(config);
+    configureLaser(config);
+    this.improvedProposal = config.improvedProposal;
+    this.motionNoise = config.motionNoise;
+    this.rng = new Random(config.seed);
+
+    this.step = 0;
+    this.truePose = { ...START_POSE };
+    this.odometryPose = { ...START_POSE };
+    this.trueTrail = [{ ...START_POSE }];
+    this.odometryTrail = [{ ...START_POSE }];
+
+    this.filter = new FastSlamFilter({
+      particleCount: config.particleCount,
+      resolution: config.resolution,
+      startPose: START_POSE,
+      rng: this.rng,
+    });
+    this.route = new RouteFollower(LOOP_ROUTE);
+    this.loopClosure = new LoopClosureDetector();
+
+    // Estadísticas para la interfaz
+    this.neffHistory = [];      // Neff / N tras cada corrección
+    this.resampleSteps = [];    // pasos en los que se remuestreó
+    this.mapsCopied = 0;
+    this.lastNeff = null;
+    this.lastScan = null;
+    this.closureStep = -1;      // paso en que se detectó el cierre (-1: todavía no)
+
+    // Escaneo retenido en la pausa: { scan, revisitedBeams, previewWeights }
+    this.pending = null;
+
+    // Primer escaneo desde la pose inicial conocida
+    this.#correct(simulateScan(this.truePose, this.rng));
+  }
+
+  get particles() {
+    return this.filter.particles;
+  }
+
+  /**
+   * Un paso completo: mover el robot, predecir y corregir con el nuevo escaneo.
+   * Si `pauseBeforeLoopClosure` y el escaneo cierra el ciclo, se queda en pausa
+   * entre la predicción y la corrección, y devuelve 'paused'.
+   */
+  advance(u, { pauseBeforeLoopClosure }) {
+    if (this.pending) return 'pending';
+    this.step++;
+
+    this.truePose = moveRealRobot(this.truePose, u, this.rng);
+    this.odometryPose = integrateOdometry(this.odometryPose, u);
+    this.trueTrail.push(this.truePose);
+    this.odometryTrail.push(this.odometryPose);
+
+    this.filter.predict(u, this.motionNoise);
+
+    const scan = simulateScan(this.truePose, this.rng);
+    const closure = this.loopClosure.check(this.truePose, scan, this.step);
+    if (this.closureStep < 0 && closure.isClosure) {
+      this.closureStep = this.step;
+      if (pauseBeforeLoopClosure) {
+        this.lastScan = scan;
+        this.pending = {
+          scan,
+          revisitedBeams: closure.beams,
+          previewWeights: this.filter.previewWeights(scan),
+        };
+        return 'paused';
+      }
+    }
+    this.#correct(scan);
+    return 'ok';
+  }
+
+  /** Sale de la pausa aplicando el escaneo retenido. */
+  applyPendingScan() {
+    if (!this.pending) return;
+    const { scan } = this.pending;
+    this.pending = null;
+    this.#correct(scan);
+  }
+
+  #correct(scan) {
+    this.lastScan = scan;
+    const result = this.filter.correct(scan, {
+      improvedProposal: this.improvedProposal && this.step > 2,
+    });
+    this.loopClosure.markSeen(this.truePose, scan, this.step);
+    this.lastNeff = result.neff;
+    this.neffHistory.push(result.neff / this.filter.count);
+    if (result.resampled) {
+      this.resampleSteps.push(this.step);
+      this.mapsCopied += result.mapsCopied;
+    }
+  }
+}
+
+// ===== js/ui/history.js =====
+// Historial de acciones para poder retroceder. No guarda copias de los mapas:
+// para volver atrás se rehace la simulación desde el principio con la misma
+// semilla y las mismas acciones, menos las últimas. El resultado es idéntico.
+
+class History {
+  constructor(config) {
+    this.config = config;
+    this.actions = [];
+  }
+
+  get length() {
+    return this.actions.length;
+  }
+
+  /** Registra un paso ya dado, con los ajustes que estaban activos. */
+  recordAdvance(simulation, u, pauseBeforeLoopClosure) {
+    this.actions.push({
+      type: 'advance',
+      u,
+      pauseBeforeLoopClosure,
+      improvedProposal: simulation.improvedProposal,
+      motionNoise: simulation.motionNoise,
+      routeIndex: simulation.route.index,
+    });
+  }
+
+  recordApplyScan() {
+    this.actions.push({ type: 'applyScan' });
+  }
+
+  /** Quita las `count` últimas acciones y devuelve la simulación rehecha. */
+  undo(count) {
+    this.actions = this.actions.slice(0, Math.max(0, this.actions.length - count));
+    const simulation = new Simulation(this.config);
+    for (const action of this.actions) {
+      if (action.type === 'advance') {
+        simulation.improvedProposal = action.improvedProposal;
+        simulation.motionNoise = action.motionNoise;
+        simulation.advance(action.u, { pauseBeforeLoopClosure: action.pauseBeforeLoopClosure });
+        simulation.route.index = action.routeIndex;
+      } else {
+        simulation.applyPendingScan();
+      }
+    }
+    return simulation;
+  }
+}
+
+// ===== js/ui/render.js =====
+// Dibujo en los lienzos. Solo lee la simulación; no la modifica.
+
+/** Colores del tema actual (claro u oscuro), leídos de las variables CSS. */
+function readTheme() {
+  const style = getComputedStyle(document.documentElement);
+  const get = (name) => style.getPropertyValue(name).trim();
+  return {
+    background: get('--bg'), panel: get('--panel'), ink: get('--ink'), line: get('--line'),
+    muted: get('--muted'), truth: get('--truth'), odometry: get('--odo'),
+    particle: get('--particle'), wall: get('--wall'), scan: get('--scan'), warn: get('--warn'),
+  };
+}
+
+/** Paso de metros a píxeles para un lienzo que muestra MAP_BOUNDS entero (y hacia arriba). */
+class Projection {
+  constructor(canvas) {
+    this.scale = canvas.width / MAP_BOUNDS.width;
+  }
+  x(x) { return (x - MAP_BOUNDS.x0) * this.scale; }
+  y(y) { return (MAP_BOUNDS.y0 + MAP_BOUNDS.height - y) * this.scale; }
+}
+
+// ---------- Primitivas ----------
+
+function strokePath(ctx, view, points) {
+  ctx.beginPath();
+  points.forEach((p, k) => {
+    if (k === 0) ctx.moveTo(view.x(p.x), view.y(p.y));
+    else ctx.lineTo(view.x(p.x), view.y(p.y));
+  });
+  ctx.stroke();
+}
+
+function drawRobot(ctx, view, pose, color, radius) {
+  ctx.fillStyle = color;
+  ctx.strokeStyle = color;
+  ctx.beginPath();
+  ctx.arc(view.x(pose.x), view.y(pose.y), radius * view.scale, 0, 2 * Math.PI);
+  ctx.fill();
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(view.x(pose.x), view.y(pose.y));
+  ctx.lineTo(view.x(pose.x + Math.cos(pose.theta) * radius * 1.9),
+             view.y(pose.y + Math.sin(pose.theta) * radius * 1.9));
+  ctx.stroke();
+}
+
+function drawWalls(ctx, view, color, width) {
+  ctx.strokeStyle = color;
+  ctx.lineWidth = width;
+  ctx.beginPath();
+  for (const [xa, ya, xb, yb] of WALLS) {
+    ctx.moveTo(view.x(xa), view.y(ya));
+    ctx.lineTo(view.x(xb), view.y(yb));
+  }
+  ctx.stroke();
+}
+
+/** Flecha de una partícula; la opacidad indica el peso relativo al máximo. */
+function drawParticle(ctx, view, pose, color, opacity) {
+  const x = view.x(pose.x);
+  const y = view.y(pose.y);
+  const a = -pose.theta;  // el eje y del lienzo va hacia abajo
+  const length = 9;
+  ctx.globalAlpha = opacity;
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(x + Math.cos(a) * length, y + Math.sin(a) * length);
+  ctx.lineTo(x + Math.cos(a + 2.5) * length * 0.6, y + Math.sin(a + 2.5) * length * 0.6);
+  ctx.lineTo(x + Math.cos(a - 2.5) * length * 0.6, y + Math.sin(a - 2.5) * length * 0.6);
+  ctx.closePath();
+  ctx.fill();
+  ctx.globalAlpha = 1;
+}
+
+// ---------- Mapa de ocupación como imagen ----------
+
+const gridCanvas = document.createElement('canvas');
+const gridContext = gridCanvas.getContext('2d');
+let gridImage = null;
+
+/** Pinta un mapa en un lienzo auxiliar de 1 píxel por celda: negro ocupado, blanco libre. */
+function gridToImage(grid) {
+  if (gridCanvas.width !== grid.nx || gridCanvas.height !== grid.ny || !gridImage) {
+    gridCanvas.width = grid.nx;
+    gridCanvas.height = grid.ny;
+    gridImage = gridContext.createImageData(grid.nx, grid.ny);
+  }
+  const pixels = gridImage.data;
+  for (let j = 0; j < grid.ny; j++) {
+    const row = (grid.ny - 1 - j) * grid.nx;  // la fila 0 del mapa va abajo
+    for (let i = 0; i < grid.nx; i++) {
+      const freeProbability = 1 / (1 + Math.exp(grid.logOdds[j * grid.nx + i]));
+      const k = (row + i) * 4;
+      pixels[k] = pixels[k + 1] = pixels[k + 2] = 255 * freeProbability;
+      pixels[k + 3] = 255;
+    }
+  }
+  gridContext.putImageData(gridImage, 0, 0);
+  return gridCanvas;
+}
+
+// ---------- Vistas ----------
+
+/**
+ * Mundo real: paredes, ruta, láser, robot real, odometría y todas las partículas.
+ * Durante la pausa, los haces que vuelven a ver zona antigua salen en naranja.
+ */
+function drawWorldView(canvas, sim, selectedIndex, { showAllTrajectories }, theme) {
+  const ctx = canvas.getContext('2d');
+  const view = new Projection(canvas);
+  const particles = sim.particles;
+  const selected = particles[selectedIndex];
+  const maxWeight = Math.max(...particles.map((p) => p.weight));
+
+  ctx.fillStyle = theme.background;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = theme.panel;
+  ctx.fillRect(view.x(0), view.y(WORLD.height), WORLD.width * view.scale, WORLD.height * view.scale);
+  ctx.globalAlpha = 0.55;
+  ctx.fillStyle = theme.line;
+  for (const [x0, y0, x1, y1] of OBSTACLES) {
+    ctx.fillRect(view.x(x0), view.y(y1), (x1 - x0) * view.scale, (y1 - y0) * view.scale);
+  }
+  ctx.globalAlpha = 1;
+  drawWalls(ctx, view, theme.wall, 2);
+
+  // Ruta prevista
+  ctx.setLineDash([2, 6]);
+  ctx.strokeStyle = theme.muted;
+  ctx.lineWidth = 1;
+  strokePath(ctx, view, [START_POSE, ...LOOP_ROUTE.map(([x, y]) => ({ x, y }))]);
+  ctx.setLineDash([]);
+
+  // Láser desde la pose real
+  const scan = sim.pending ? sim.pending.scan : sim.lastScan;
+  if (scan) {
+    const revisited = new Set(sim.pending ? sim.pending.revisitedBeams : []);
+    ctx.lineWidth = 1;
+    for (const point of scanEndpoints(sim.truePose, scan)) {
+      const color = revisited.has(point.beam) ? theme.warn : theme.scan;
+      ctx.strokeStyle = color;
+      ctx.globalAlpha = revisited.has(point.beam) ? 0.9 : 0.35;
+      ctx.beginPath();
+      ctx.moveTo(view.x(sim.truePose.x), view.y(sim.truePose.y));
+      ctx.lineTo(view.x(point.x), view.y(point.y));
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = color;
+      ctx.fillRect(view.x(point.x) - 2, view.y(point.y) - 2, 4, 4);
+    }
+  }
+
+  // Árbol de trayectorias: con el tiempo, todas convergen en un antepasado común
+  if (showAllTrajectories) {
+    ctx.strokeStyle = theme.particle;
+    ctx.globalAlpha = Math.max(0.06, 2 / particles.length);
+    ctx.lineWidth = 1;
+    for (const p of particles) strokePath(ctx, view, p.trajectoryPoints());
+    ctx.globalAlpha = 1;
+  }
+
+  // Odometría (discontinua) y robot real
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = theme.odometry;
+  ctx.setLineDash([6, 4]);
+  strokePath(ctx, view, sim.odometryTrail);
+  ctx.setLineDash([]);
+  ctx.strokeStyle = theme.truth;
+  strokePath(ctx, view, sim.trueTrail);
+  drawRobot(ctx, view, sim.odometryPose, theme.odometry, 0.14);
+  drawRobot(ctx, view, sim.truePose, theme.truth, 0.18);
+
+  // Partícula seleccionada: su trayectoria y un círculo alrededor
+  ctx.strokeStyle = theme.particle;
+  ctx.lineWidth = 2;
+  strokePath(ctx, view, selected.trajectoryPoints());
+  for (const p of particles) {
+    drawParticle(ctx, view, p.pose, theme.particle, 0.12 + 0.88 * p.weight / maxWeight);
+  }
+  ctx.strokeStyle = theme.ink;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.arc(view.x(selected.pose.x), view.y(selected.pose.y), 13, 0, 2 * Math.PI);
+  ctx.stroke();
+}
+
+/** Mapa de una partícula con su trayectoria y el último escaneo visto desde su pose. */
+function drawParticleMap(canvas, sim, particle, { showRealWalls }, theme) {
+  const ctx = canvas.getContext('2d');
+  const view = new Projection(canvas);
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(gridToImage(particle.map), 0, 0, canvas.width, canvas.height);
+
+  if (showRealWalls) {
+    ctx.globalAlpha = 0.6;
+    drawWalls(ctx, view, theme.odometry, 1.5);
+    ctx.globalAlpha = 1;
+  }
+  ctx.strokeStyle = theme.particle;
+  ctx.lineWidth = 2;
+  strokePath(ctx, view, particle.trajectoryPoints());
+
+  const scan = sim.pending ? sim.pending.scan : sim.lastScan;
+  if (scan) {
+    ctx.fillStyle = sim.pending ? theme.warn : theme.scan;
+    for (const point of scanEndpoints(particle.pose, scan)) {
+      ctx.fillRect(view.x(point.x) - 2.5, view.y(point.y) - 2.5, 5, 5);
+    }
+  }
+  drawRobot(ctx, view, particle.pose, theme.particle, 0.16);
+}
+
+/** Miniatura del mapa de una partícula con un punto en su pose. */
+function drawThumbnail(canvas, particle, theme) {
+  const ctx = canvas.getContext('2d');
+  const view = new Projection(canvas);
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(gridToImage(particle.map), 0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = theme.particle;
+  ctx.beginPath();
+  ctx.arc(view.x(particle.pose.x), view.y(particle.pose.y), 3, 0, 2 * Math.PI);
+  ctx.fill();
+}
+
+/** Gráfica de Neff/N con el umbral N/2, las marcas de remuestreo y el paso del cierre. */
+function drawNeffChart(canvas, sim, theme) {
+  const ctx = canvas.getContext('2d');
+  const { width, height } = canvas;
+  const history = sim.neffHistory;
+  const span = Math.max(history.length, 60);
+  const px = (step) => 4 + (width - 8) * step / (span - 1);
+  const py = (ratio) => height - 6 - (height - 12) * ratio;
+
+  ctx.clearRect(0, 0, width, height);
+  ctx.strokeStyle = theme.line;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (const ratio of [0, 1]) {
+    ctx.moveTo(0, py(ratio));
+    ctx.lineTo(width, py(ratio));
+  }
+  ctx.stroke();
+
+  ctx.setLineDash([5, 4]);
+  ctx.strokeStyle = theme.muted;
+  ctx.beginPath();
+  ctx.moveTo(0, py(0.5));
+  ctx.lineTo(width, py(0.5));
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.fillStyle = theme.warn;
+  for (const step of sim.resampleSteps) ctx.fillRect(px(step) - 1, height - 5, 2, 5);
+  if (sim.closureStep > 0) {
+    ctx.strokeStyle = theme.warn;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(px(sim.closureStep), 0);
+    ctx.lineTo(px(sim.closureStep), height);
+    ctx.stroke();
+  }
+
+  ctx.strokeStyle = theme.particle;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  history.forEach((ratio, step) => {
+    if (step === 0) ctx.moveTo(px(step), py(ratio));
+    else ctx.lineTo(px(step), py(ratio));
+  });
+  ctx.stroke();
+  if (history.length) {
+    const last = history.length - 1;
+    ctx.fillStyle = theme.particle;
+    ctx.beginPath();
+    ctx.arc(px(last), py(history[last]), 3.5, 0, 2 * Math.PI);
+    ctx.fill();
+  }
+}
+
+// ===== js/ui/main.js =====
+// Interfaz: controles, estado de la página y orquestación del dibujo.
+
+const $ = (id) => document.getElementById(id);
+
+const MANUAL_TRANSLATION = 0.25;      // m por pulsación
+const MANUAL_ROTATION = 10 * DEG;     // rad por pulsación
+const THUMBNAIL_INTERVAL_MS = 300;    // refresco de miniaturas mientras se reproduce
+const NOTE_DURATION_STEPS = 15;       // pasos que se muestra un aviso de linaje
+
+const controls = {
+  worldCanvas: $('worldCanvas'), mapCanvas: $('mapCanvas'), neffCanvas: $('neffCanvas'),
+  thumbnails: $('thumbnails'),
+  forward: $('forward'), backward: $('backward'), turnLeft: $('turnLeft'), turnRight: $('turnRight'),
+  play: $('play'), step: $('step'), undo: $('undo'), undo10: $('undo10'), applyScan: $('applyScan'),
+  speed: $('speed'), speedValue: $('speedValue'),
+  particleCount: $('particleCount'), resolution: $('resolution'), seed: $('seed'),
+  randomSeed: $('randomSeed'), restart: $('restart'),
+  motionNoise: $('motionNoise'), motionNoiseValue: $('motionNoiseValue'),
+  laserRange: $('laserRange'), laserFieldOfView: $('laserFieldOfView'), worldDetails: $('worldDetails'),
+  pauseBeforeClosure: $('pauseBeforeClosure'), improvedProposal: $('improvedProposal'),
+  followBest: $('followBest'), showAllTrajectories: $('showAllTrajectories'),
+  showRealWalls: $('showRealWalls'),
+  banner: $('banner'), bannerText: $('bannerText'),
+  worldInfo: $('worldInfo'), mapInfo: $('mapInfo'), memoryText: $('memoryText'),
+  stats: {
+    step: $('statStep'), neff: $('statNeff'), resamples: $('statResamples'),
+    mapsCopied: $('statMapsCopied'), bestError: $('statBestError'),
+    odometryError: $('statOdometryError'), mapSize: $('statMapSize'), totalMaps: $('statTotalMaps'),
+  },
+};
+
+const state = {
+  sim: null,
+  history: null,
+  selected: 0,                     // casilla de la partícula que se ve en grande
+  note: null,                      // aviso de linaje: { text, step }
+  playing: false,
+  timer: null,
+  lastThumbnailDraw: 0,
+};
+
+// ---------- Ciclo de vida de la simulación ----------
+
+function readConfig() {
+  const seed = Math.abs(Math.floor(Number(controls.seed.value))) || 0;
+  controls.seed.value = seed;
+  return {
+    seed,
+    particleCount: Number(controls.particleCount.value),
+    resolution: Number(controls.resolution.value),
+    improvedProposal: controls.improvedProposal.checked,
+    motionNoise: Number(controls.motionNoise.value),
+    laserRange: Number(controls.laserRange.value),
+    laserFieldOfView: Number(controls.laserFieldOfView.value) * DEG,
+    worldDetails: controls.worldDetails.value === '1',
+  };
+}
+
+function restart() {
+  stop();
+  const config = readConfig();
+  state.sim = new Simulation(config);
+  state.history = new History(config);
+  state.selected = 0;
+  state.note = null;
+  buildThumbnails();
+  updateMemoryText();
+  render({ thumbnails: true });
+}
+
+/** Ejecuta una acción del usuario y, si hubo remuestreo, sigue el linaje elegido. */
+function runAction(action) {
+  const resamplesBefore = state.sim.resampleSteps.length;
+  const result = action();
+  if (state.sim.resampleSteps.length > resamplesBefore) followLineage();
+  return result;
+}
+
+function advance(u) {
+  return runAction(() => {
+    const pause = controls.pauseBeforeClosure.checked;
+    const result = state.sim.advance(u, { pauseBeforeLoopClosure: pause });
+    state.history.recordAdvance(state.sim, u, pause);
+    if (result === 'paused') stop();
+    return result;
+  });
+}
+
+function applyScan() {
+  if (!state.sim.pending) return;
+  runAction(() => {
+    state.sim.applyPendingScan();
+    state.history.recordApplyScan();
+  });
+}
+
+/** Un paso de la ruta automática (o aplicar el escaneo si estamos en la pausa). */
+function autoStep() {
+  if (state.sim.pending) {
+    applyScan();
+    render({ thumbnails: true });
+    return;
+  }
+  const u = state.sim.route.nextCommand(state.sim.truePose);
+  if (!u) {
+    stop();
+    render({ thumbnails: true });
+    return;
+  }
+  advance(u);
+  render();
+}
+
+function manualMove(u) {
+  if (state.sim.pending) return;
+  stop();
+  advance(u);
+  render({ thumbnails: true });
+}
+
+function undo(count) {
+  if (!state.history.length) return;
+  stop();
+  state.sim = state.history.undo(count);
+  // Los ajustes actuales de la página valen para los pasos siguientes
+  state.sim.improvedProposal = controls.improvedProposal.checked;
+  state.sim.motionNoise = Number(controls.motionNoise.value);
+  state.note = null;
+  render({ thumbnails: true });
+}
+
+function tick() {
+  if (!state.playing) return;
+  autoStep();
+  if (state.playing) state.timer = setTimeout(tick, 1000 / Number(controls.speed.value));
+}
+
+function play() {
+  if (state.sim.pending) return;
+  state.playing = true;
+  updateButtons();
+  tick();
+}
+
+function stop() {
+  state.playing = false;
+  clearTimeout(state.timer);
+  if (state.sim) updateButtons();
+}
+
+// ---------- Selección de partícula ----------
+
+function selectParticle(index) {
+  state.selected = index;
+  state.note = null;
+  controls.followBest.checked = false;
+  render({ thumbnails: true });
+}
+
+/**
+ * El número de una partícula es solo su casilla: tras remuestrear, la casilla
+ * contiene otra partícula. Para seguir a «la misma», pasamos a una de sus hijas.
+ */
+function followLineage() {
+  if (controls.followBest.checked || state.sim.pending) return;
+  const step = state.sim.step;
+  const children = [];
+  state.sim.particles.forEach((p, i) => {
+    if (p.parentIndex === state.selected) children.push(i);
+  });
+  if (children.length) {
+    state.note = { text: `linaje seguido (${children.length} ${children.length > 1 ? 'hijas' : 'hija'})`, step };
+    state.selected = children[0];
+  } else {
+    state.note = { text: `el linaje de #${state.selected} se extinguió en el paso ${step}`, step };
+    controls.followBest.checked = true;
+  }
+}
+
+/** Partícula más cercana a un clic en el mundo (a menos de 60 cm). */
+function particleAt(event) {
+  const rect = controls.worldCanvas.getBoundingClientRect();
+  const x = MAP_BOUNDS.x0 + (event.clientX - rect.left) / rect.width * MAP_BOUNDS.width;
+  const y = MAP_BOUNDS.y0 + MAP_BOUNDS.height - (event.clientY - rect.top) / rect.height * MAP_BOUNDS.height;
+  let nearest = -1;
+  let nearestDistance = 0.6;
+  state.sim.particles.forEach((p, i) => {
+    const d = Math.hypot(p.pose.x - x, p.pose.y - y);
+    if (d < nearestDistance) {
+      nearestDistance = d;
+      nearest = i;
+    }
+  });
+  return nearest;
+}
+
+// ---------- Dibujo y textos ----------
+
+function render({ thumbnails = false } = {}) {
+  const sim = state.sim;
+  const theme = readTheme();
+  if (controls.followBest.checked) state.selected = sim.filter.bestIndex();
+  if (state.selected >= sim.particles.length) state.selected = 0;
+  const particle = sim.particles[state.selected];
+
+  drawWorldView(controls.worldCanvas, sim, state.selected,
+    { showAllTrajectories: controls.showAllTrajectories.checked }, theme);
+  drawParticleMap(controls.mapCanvas, sim, particle,
+    { showRealWalls: controls.showRealWalls.checked }, theme);
+  drawNeffChart(controls.neffCanvas, sim, theme);
+  updateStats(particle);
+  updateHeaders(particle);
+  updateBanner();
+  updateButtons();
+
+  const now = performance.now();
+  if (thumbnails || !state.playing || now - state.lastThumbnailDraw > THUMBNAIL_INTERVAL_MS) {
+    updateThumbnails(theme);
+    state.lastThumbnailDraw = now;
+  }
+}
+
+function formatBytes(bytes) {
+  if (bytes >= 1048576) return (bytes / 1048576).toFixed(bytes >= 10485760 ? 0 : 1) + ' MB';
+  return (bytes / 1024).toFixed(0) + ' KB';
+}
+
+function formatPoseError(pose, truth) {
+  const distance = Math.hypot(pose.x - truth.x, pose.y - truth.y);
+  const angle = Math.abs(wrapAngle(pose.theta - truth.theta)) / DEG;
+  return `${distance.toFixed(2)} m · ${angle.toFixed(1)}°`;
+}
+
+function updateStats(particle) {
+  const sim = state.sim;
+  const s = controls.stats;
+  const mapBytes = OccupancyGrid.bytesFor(sim.config.resolution);
+  s.step.textContent = sim.step;
+  s.neff.textContent = sim.lastNeff ? `${sim.lastNeff.toFixed(1)} / ${sim.particles.length}` : '–';
+  s.resamples.textContent = sim.resampleSteps.length;
+  s.mapsCopied.textContent = sim.mapsCopied;
+  s.bestError.textContent = formatPoseError(particle.pose, sim.truePose);
+  s.odometryError.textContent = formatPoseError(sim.odometryPose, sim.truePose);
+  s.mapSize.textContent = formatBytes(mapBytes);
+  s.totalMaps.textContent = formatBytes(mapBytes * sim.particles.length);
+}
+
+function updateHeaders(particle) {
+  const sim = state.sim;
+  const i = state.selected;
+
+  if (sim.pending) controls.worldInfo.textContent = 'pausado antes de cerrar el ciclo';
+  else if (sim.closureStep > 0) controls.worldInfo.textContent = `ciclo cerrado en el paso ${sim.closureStep}`;
+  else controls.worldInfo.textContent = '';
+
+  const parts = [`${controls.followBest.checked ? 'mejor: ' : ''}#${i}`];
+  let weight = `peso ${(particle.weight * 100).toFixed(1)} %`;
+  if (sim.pending) weight += ` → ${(sim.pending.previewWeights[i] * 100).toFixed(1)} %`;
+  parts.push(weight);
+  const lastResample = sim.resampleSteps[sim.resampleSteps.length - 1];
+  if (lastResample === sim.step && !sim.pending) parts.push(`copia de #${particle.parentIndex} (remuestreo)`);
+  if (state.note && sim.step - state.note.step < NOTE_DURATION_STEPS) parts.push(state.note.text);
+  controls.mapInfo.textContent = parts.join(' · ');
+}
+
+function updateBanner() {
+  const sim = state.sim;
+  controls.banner.hidden = !sim.pending;
+  if (!sim.pending) return;
+  controls.bannerText.textContent =
+    `Paso ${sim.step}: el siguiente escaneo vuelve a ver zona que no se veía desde hace más de ` +
+    `${sim.loopClosure.gapSteps} pasos (${sim.pending.revisitedBeams.length} haces en naranja). ` +
+    'Las partículas ya se han movido, pero todavía no se han ponderado ni han actualizado su mapa. ' +
+    'En las miniaturas, «→» indica el peso que tendría cada partícula tras este escaneo; pincha en ' +
+    'las que suben y en las que bajan y mira si los puntos naranjas caen sobre las paredes que ' +
+    'mapearon al principio. El cierre completo dura unos 20 pasos: después sigue el ciclo y observa ' +
+    'el error de la mejor partícula y la gráfica de Neff.';
+}
+
+function updateButtons() {
+  const sim = state.sim;
+  const paused = Boolean(sim.pending);
+  const routeDone = sim.route.finished;
+  for (const button of [controls.forward, controls.backward, controls.turnLeft, controls.turnRight]) {
+    button.disabled = paused;
+  }
+  controls.step.textContent = paused ? 'Aplicar el escaneo' : 'Paso';
+  controls.step.disabled = !paused && routeDone;
+  controls.play.disabled = paused || routeDone;
+  controls.undo.disabled = controls.undo10.disabled = !state.history.length;
+  if (routeDone) controls.play.textContent = 'Ruta terminada';
+  else if (state.playing) controls.play.textContent = '⏸ Pausar';
+  else controls.play.textContent = sim.step > 0 ? '▶ Seguir el ciclo' : '▶ Recorrer el ciclo';
+}
+
+function updateMemoryText() {
+  const { particleCount, resolution } = state.sim.config;
+  const nx = Math.round(MAP_BOUNDS.width / resolution);
+  const ny = Math.round(MAP_BOUNDS.height / resolution);
+  const perMap = OccupancyGrid.bytesFor(resolution);
+  const examples = [[30, 0.1], [100, 0.1], [200, 0.05], [1000, 0.05]]
+    .map(([n, r]) => `${n} partículas a ${r * 100} cm: ${formatBytes(n * OccupancyGrid.bytesFor(r))}`)
+    .join('; ');
+  controls.memoryText.textContent =
+    `Ahora: rejilla de ${MAP_BOUNDS.width} × ${MAP_BOUNDS.height} m a ${resolution * 100} cm = ` +
+    `${nx} × ${ny} = ${(nx * ny).toLocaleString('es')} celdas en Float32, ${formatBytes(perMap)} por ` +
+    `partícula y ${formatBytes(perMap * particleCount)} para ${particleCount} partículas. ` +
+    `Otras combinaciones: ${examples}. La memoria no es el problema en un navegador; lo que limita ` +
+    'es el tiempo por paso (trazar 72 rayos por partícula y copiar mapas al remuestrear) y, con la ' +
+    'propuesta mejorada, el scan matching de cada partícula.';
+}
+
+// ---------- Miniaturas ----------
+
+function buildThumbnails() {
+  controls.thumbnails.textContent = '';
+  state.sim.particles.forEach((_, i) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'thumb';
+    button.innerHTML =
+      '<canvas width="108" height="84"></canvas>' +
+      '<div class="weight-bar"><i></i></div>' +
+      `<small><span>#${i}</span><span class="weight"></span></small>`;
+    button.addEventListener('click', () => selectParticle(i));
+    controls.thumbnails.appendChild(button);
+  });
+}
+
+function updateThumbnails(theme) {
+  const sim = state.sim;
+  const best = sim.filter.bestIndex();
+  const maxWeight = Math.max(...sim.particles.map((p) => p.weight));
+  [...controls.thumbnails.children].forEach((button, i) => {
+    const particle = sim.particles[i];
+    drawThumbnail(button.querySelector('canvas'), particle, theme);
+    button.querySelector('.weight-bar i').style.width = `${(100 * particle.weight / maxWeight).toFixed(0)}%`;
+    let weight = (particle.weight * 100).toFixed(1);
+    if (sim.pending) weight += '→' + (sim.pending.previewWeights[i] * 100).toFixed(1);
+    button.querySelector('.weight').textContent = `${i === best ? '★ ' : ''}${weight}%`;
+    button.classList.toggle('selected', i === state.selected);
+  });
+}
+
+// ---------- Eventos ----------
+
+controls.forward.addEventListener('click', () => manualMove({ rotation: 0, translation: MANUAL_TRANSLATION }));
+controls.backward.addEventListener('click', () => manualMove({ rotation: 0, translation: -MANUAL_TRANSLATION }));
+controls.turnLeft.addEventListener('click', () => manualMove({ rotation: MANUAL_ROTATION, translation: 0 }));
+controls.turnRight.addEventListener('click', () => manualMove({ rotation: -MANUAL_ROTATION, translation: 0 }));
+controls.play.addEventListener('click', () => (state.playing ? stop() : play()));
+controls.step.addEventListener('click', () => {
+  stop();
+  autoStep();
+  render({ thumbnails: true });
+});
+controls.applyScan.addEventListener('click', () => {
+  applyScan();
+  render({ thumbnails: true });
+});
+controls.undo.addEventListener('click', () => undo(1));
+controls.undo10.addEventListener('click', () => undo(10));
+controls.restart.addEventListener('click', restart);
+for (const input of [controls.particleCount, controls.resolution, controls.seed,
+                     controls.laserRange, controls.laserFieldOfView, controls.worldDetails]) {
+  input.addEventListener('change', restart);
+}
+controls.randomSeed.addEventListener('click', () => {
+  controls.seed.value = Math.floor(Math.random() * 100000);
+  restart();
+});
+controls.improvedProposal.addEventListener('change', () => {
+  state.sim.improvedProposal = controls.improvedProposal.checked;
+});
+controls.motionNoise.addEventListener('input', () => {
+  controls.motionNoiseValue.textContent = controls.motionNoise.value;
+  state.sim.motionNoise = Number(controls.motionNoise.value);
+});
+controls.speed.addEventListener('input', () => {
+  controls.speedValue.textContent = controls.speed.value;
+});
+for (const box of [controls.followBest, controls.showAllTrajectories, controls.showRealWalls]) {
+  box.addEventListener('change', () => {
+    state.note = null;
+    render({ thumbnails: true });
+  });
+}
+controls.worldCanvas.addEventListener('click', (event) => {
+  const index = particleAt(event);
+  if (index >= 0) selectParticle(index);
+});
+
+const ARROW_KEYS = {
+  ArrowUp: controls.forward, ArrowDown: controls.backward,
+  ArrowLeft: controls.turnLeft, ArrowRight: controls.turnRight,
+};
+document.addEventListener('keydown', (event) => {
+  const tag = event.target.tagName;
+  if (tag === 'SELECT' || tag === 'INPUT') return;
+  if (ARROW_KEYS[event.key]) {
+    event.preventDefault();
+    ARROW_KEYS[event.key].click();
+  } else if (event.key === ' ') {
+    event.preventDefault();
+    if (!state.sim.pending) state.playing ? stop() : play();
+  } else if (event.key === 'Backspace') {
+    event.preventDefault();
+    undo(1);
+  } else if (event.key === 'Enter' && tag !== 'BUTTON') {
+    event.preventDefault();
+    controls.step.click();
+  }
+});
+
+// Redibujar si cambia el tema claro/oscuro
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => render({ thumbnails: true }));
+new MutationObserver(() => render({ thumbnails: true }))
+  .observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+restart();
+</script>
 </body>
 </html>
