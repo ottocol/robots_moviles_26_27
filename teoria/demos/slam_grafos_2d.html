@@ -1,0 +1,904 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Grafo de poses 2D</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+/* Layout: trayectoria grande a la izquierda y matriz H a la derecha; debajo, mandos, tabla de iteraciones y los tres pasos de Gauss-Newton */
+:root {
+  --bg: #f4f6f9;
+  --surface: #ffffff;
+  --ink: #1a2030;
+  --muted: #586176;
+  --line: #d8dde7;
+  --odo: #2361a6;
+  --loop: #c0177a;
+  --truth: #1d8657;
+  --drift: #b0452a;
+  --worse: #b0452a;
+  --font-ui: "Figtree", "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  --font-num: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #10131a; --surface: #181c26; --ink: #e6e9f1; --muted: #a1a9ba; --line: #2b3141;
+    --odo: #70aaee; --loop: #f065b0; --truth: #5ec992; --drift: #f08a6e; --worse: #f08a6e;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #10131a; --surface: #181c26; --ink: #e6e9f1; --muted: #a1a9ba; --line: #2b3141;
+  --odo: #70aaee; --loop: #f065b0; --truth: #5ec992; --drift: #f08a6e; --worse: #f08a6e;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-ui); font-size: 16px; line-height: 1.45; }
+.wrap {
+  max-width: 1240px; margin: 0 auto; padding-block: 24px 48px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: flex; flex-direction: column; gap: 18px;
+}
+.eyebrow { font-size: .78rem; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); font-weight: 600; margin: 0; }
+h1 { font-size: clamp(1.7rem, 3.2vw, 2.4rem); font-weight: 800; letter-spacing: -.015em; margin: .15em 0 .3em; line-height: 1.1; text-wrap: balance; }
+.lede { max-width: 72ch; color: var(--muted); margin: 0; }
+.lede b { color: var(--ink); font-weight: 600; }
+
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.card h2 { font-size: .78rem; text-transform: uppercase; letter-spacing: .09em; color: var(--muted); margin: 0; font-weight: 700; display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.card h2 span { text-transform: none; letter-spacing: 0; font-family: var(--font-num); color: var(--ink); font-weight: 500; }
+
+.views { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); gap: 18px; align-items: start; }
+@media (max-width: 880px) { .views { grid-template-columns: 1fr; } }
+canvas { display: block; width: 100%; max-width: 100%; height: auto; }
+#trajectory { aspect-ratio: 4 / 3; }
+#hessian { aspect-ratio: 1; }
+
+.legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: .85rem; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 7px; }
+.legend i { display: inline-block; width: 18px; height: 3px; border-radius: 2px; }
+.legend i.block { width: 12px; height: 12px; border-radius: 2px; }
+.legend i.dash { background: repeating-linear-gradient(90deg, var(--drift) 0 5px, transparent 5px 9px); }
+.legend i.loopdash { background: repeating-linear-gradient(90deg, var(--loop) 0 3px, transparent 3px 6px); }
+.note { margin: 0; font-size: .9rem; color: var(--muted); }
+
+.controls { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 18px; }
+@media (max-width: 880px) { .controls { grid-template-columns: 1fr; } }
+.controls > * { min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.buttons { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+button {
+  font: inherit; font-size: .95rem; padding: 9px 16px; border-radius: 9px; border: 1px solid var(--line);
+  background: var(--surface); color: var(--ink); cursor: pointer; min-height: 42px;
+}
+button:hover:not(:disabled) { border-color: var(--muted); }
+button.primary { background: var(--odo); border-color: var(--odo); color: var(--surface); font-weight: 700; }
+button:disabled { opacity: .45; cursor: default; }
+button:focus-visible, input:focus-visible { outline: 3px solid var(--odo); outline-offset: 2px; }
+#status { font-family: var(--font-num); font-size: .88rem; color: var(--muted); }
+
+.sliders { display: grid; gap: 12px; }
+.slider { display: grid; grid-template-columns: minmax(0, 1fr) 6.5em; gap: 2px 12px; align-items: center; }
+.slider .name { grid-column: 1 / -1; font-size: .92rem; }
+.slider .name small { color: var(--muted); }
+.slider input { width: 100%; accent-color: var(--odo); }
+.slider output { font-family: var(--font-num); text-align: right; font-size: .92rem; }
+.checks { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: .92rem; }
+.checks label { display: inline-flex; gap: 6px; align-items: center; }
+
+.table-wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; font-size: .92rem; }
+th { text-align: right; font-weight: 600; font-size: .75rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); padding: 4px 8px; border-bottom: 1px solid var(--line); }
+td { text-align: right; font-family: var(--font-num); padding: 5px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; }
+tr.worse td:nth-child(2) { color: var(--worse); font-weight: 600; }
+
+.steps { margin: 0; padding: 0; list-style: none; counter-reset: s; display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+.steps li { counter-increment: s; position: relative; padding-left: 36px; font-size: .95rem; }
+.steps li::before {
+  content: counter(s); position: absolute; left: 0; top: 0; width: 26px; height: 26px; border-radius: 50%;
+  background: var(--ink); color: var(--surface); display: grid; place-items: center; font-weight: 700; font-size: .85rem;
+}
+.steps b { display: block; }
+.math { font-family: var(--font-num); font-size: .88em; white-space: nowrap; }
+.tips { margin: 0; padding-left: 18px; display: grid; gap: 6px; max-width: 90ch; }
+</style>
+
+<div class="wrap">
+  <header>
+    <p class="eyebrow">Robots Móviles · Tema 3 · SLAM basado en grafos</p>
+    <h1>Grafo de poses 2D</h1>
+    <p class="lede">El mismo problema que el ejemplo 1D, pero cada pose tiene <b>x, y y orientación</b>. Se llama 2D porque el robot se mueve en el plano, aunque cada pose tenga 3 grados de libertad (un grafo 3D tendría 6 por pose). El robot recorre un cuadrado de 4 × 4 m; su odometría deriva un poco en cada giro y, al volver, reconoce el punto de partida. Pulsa <b>Una iteración</b> y mira cómo Gauss-Newton tira del cierre de ciclo.</p>
+  </header>
+
+  <div class="views">
+    <section class="card">
+      <h2>Trayectoria <span id="status"></span></h2>
+      <canvas id="trajectory" width="880" height="660" aria-label="Trayectoria real, odometría y estimación del grafo"></canvas>
+      <div class="legend">
+        <span><i style="background: var(--truth); opacity: .5; height: 6px"></i>real</span>
+        <span><i class="dash"></i>solo odometría</span>
+        <span><i style="background: var(--odo)"></i>estimación del grafo</span>
+        <span><i style="background: var(--muted)"></i>iteración anterior</span>
+        <span><i class="loopdash"></i>dónde dice el cierre que está la pose 0</span>
+        <span><i style="background: var(--loop)"></i>muelle del cierre estirado</span>
+      </div>
+      <p class="note" id="loopInfo"></p>
+    </section>
+
+    <section class="card">
+      <h2>Matriz H <span>16 poses × 3 = 48 × 48</span></h2>
+      <canvas id="hessian" width="480" height="480" aria-label="Patrón de bloques no nulos de la matriz H"></canvas>
+      <div class="legend">
+        <span><i class="block" style="background: var(--ink)"></i>diagonal: suma de lo que llega a cada pose</span>
+        <span><i class="block" style="background: var(--odo)"></i>odometría</span>
+        <span><i class="block" style="background: var(--loop)"></i>cierre de ciclo</span>
+        <span>▨ pose 0 anclada</span>
+      </div>
+      <p class="note" id="hessianInfo"></p>
+    </section>
+  </div>
+
+  <section class="card controls">
+    <div>
+      <div class="buttons">
+        <button class="primary" id="step">Una iteración</button>
+        <button id="converge">Hasta converger</button>
+        <button id="reset">Volver a la odometría</button>
+        <button id="newSeed">Otro recorrido</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Iteración</th><th>Error total F</th><th>Giro medio</th><th>Desplazamiento medio</th></tr></thead>
+          <tbody id="iterations"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="sliders">
+      <label class="slider"><span class="name">Deriva de giro de la odometría <small>(error en cada paso)</small></span>
+        <input type="range" id="drift" min="0" max="8" step="0.5" value="3">
+        <output id="driftValue"></output>
+      </label>
+      <label class="slider"><span class="name">σ del giro de la odometría <small>(cuánto confía el grafo en los giros medidos)</small></span>
+        <input type="range" id="odoAngle" min="0.5" max="20" step="0.5" value="2">
+        <output id="odoAngleValue"></output>
+      </label>
+      <label class="slider"><span class="name">Peso del cierre de ciclo <small>(rigidez de su muelle)</small></span>
+        <input type="range" id="loopWeight" min="-2" max="2" step="0.25" value="0">
+        <output id="loopWeightValue"></output>
+      </label>
+      <div class="checks">
+        <label><input type="checkbox" id="loopEnabled" checked> Cierre de ciclo</label>
+        <label><input type="checkbox" id="showTruth" checked> Trayectoria real</label>
+        <label><input type="checkbox" id="showPrevious" checked> Iteración anterior</label>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Cada iteración de Gauss-Newton</h2>
+    <ol class="steps">
+      <li><b>Linealizar</b>Con la estimación actual, calcular el error de cada muelle, <span class="math">e = (j visto desde i) − medida</span>, y sus jacobianos A y B: cuánto cambia el error al mover un poco cada pose.</li>
+      <li><b>Montar H y b</b>Cada arista suma cuatro bloques de 3×3 en H (<span class="math">AᵀΩA, AᵀΩB, BᵀΩA, BᵀΩB</span>) y dos en b. Lo mismo que en 1D, con bloques en lugar de números.</li>
+      <li><b>Resolver y mover</b>Quitar la pose 0 (anclada), resolver <span class="math">H·Δx = −b</span> y sumar Δx a las poses. Como «visto desde i» lleva senos y cosenos, el resultado no es exacto: se repite.</li>
+    </ol>
+  </section>
+
+  <section class="card">
+    <h2>Qué probar</h2>
+    <ul class="tips">
+      <li>La primera iteración hace casi todo el <b>giro</b> (columna «Giro medio»), pero las posiciones necesitan otra más: tras girar, el muelle del cierre sigue estirado. Un error de orientación al principio, multiplicado por el brazo de palanca del recorrido, es lo que más desplaza el final.</li>
+      <li>Sube la deriva a 6–8°/paso: la primera iteración puede <b>empeorar</b> el error total (sale en rojo). La linealización es mala lejos del mínimo; por eso en la práctica se usa Levenberg-Marquardt, que frena los pasos cuando no mejoran.</li>
+      <li>Desactiva el cierre: F ya es 0 con la odometría y Gauss-Newton no mueve nada. Sin restricciones que se contradigan no hay nada que optimizar.</li>
+      <li>Baja el peso del cierre a ×0,01: el muelle es blando y el grafo apenas corrige. Sube la σ del giro: el grafo se fía menos de los giros medidos y la corrección se reparte sobre todo en ellos.</li>
+      <li>En H, el cierre son solo dos bloques en las esquinas (15, 0) y (0, 15). Con miles de poses, H sigue siendo casi toda ceros.</li>
+    </ul>
+  </section>
+</div>
+
+<script type="module">
+// ===== js/graph/random.js =====
+// Generador pseudoaleatorio con semilla (mulberry32): mismo escenario con la misma semilla.
+
+class Random {
+  constructor(seed) {
+    this.state = seed | 0;
+  }
+
+  uniform() {
+    this.state = (this.state + 0x6d2b79f5) | 0;
+    const a = this.state;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  }
+
+  gaussian() {
+    let u = 0;
+    while (u === 0) u = this.uniform();
+    return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * this.uniform());
+  }
+}
+
+// ===== js/graph/pose.js =====
+// Poses 2D { x, y, theta } y las dos operaciones que hacen falta:
+// componer (aplicar un movimiento relativo) y ver una pose desde otra.
+
+const DEG = Math.PI / 180;
+
+/** Normaliza un ángulo a (-π, π]: 359° y 1° están a 2°, no a 358°. */
+function wrapAngle(angle) {
+  return Math.atan2(Math.sin(angle), Math.cos(angle));
+}
+
+/** a ⊕ d: desde la pose a, avanzar d.x hacia delante, d.y a la izquierda y girar d.theta. */
+function compose(a, d) {
+  const c = Math.cos(a.theta);
+  const s = Math.sin(a.theta);
+  return {
+    x: a.x + c * d.x - s * d.y,
+    y: a.y + s * d.x + c * d.y,
+    theta: wrapAngle(a.theta + d.theta),
+  };
+}
+
+/** Dónde está la pose b vista desde la pose a (en el sistema de referencia de a). */
+function relativePose(a, b) {
+  const c = Math.cos(a.theta);
+  const s = Math.sin(a.theta);
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  return { x: c * dx + s * dy, y: -s * dx + c * dy, theta: wrapAngle(b.theta - a.theta) };
+}
+
+// ===== js/graph/linear-algebra.js =====
+// Matrices pequeñas como arrays de filas. Solo lo imprescindible.
+
+/** Matriz rows x cols llena de ceros. */
+function zeros(rows, cols) {
+  return Array.from({ length: rows }, () => new Array(cols).fill(0));
+}
+
+/** Aᵀ · W · B para bloques de 3x3 (W diagonal, dada como [w0, w1, w2]). */
+function transposeWeightedProduct(A, w, B) {
+  const result = zeros(3, 3);
+  for (let r = 0; r < 3; r++) {
+    for (let c = 0; c < 3; c++) {
+      let sum = 0;
+      for (let k = 0; k < 3; k++) sum += A[k][r] * w[k] * B[k][c];
+      result[r][c] = sum;
+    }
+  }
+  return result;
+}
+
+/** Aᵀ · W · e para un bloque 3x3 y un vector de 3. */
+function transposeWeightedVector(A, w, e) {
+  return [0, 1, 2].map((r) => A[0][r] * w[0] * e[0] + A[1][r] * w[1] * e[1] + A[2][r] * w[2] * e[2]);
+}
+
+/** Resuelve A·x = b por eliminación gaussiana con pivoteo parcial (A es pequeña). */
+function solveLinearSystem(A, b) {
+  const n = b.length;
+  const M = A.map((row, i) => [...row, b[i]]);
+  for (let col = 0; col < n; col++) {
+    let pivot = col;
+    for (let r = col + 1; r < n; r++) if (Math.abs(M[r][col]) > Math.abs(M[pivot][col])) pivot = r;
+    [M[col], M[pivot]] = [M[pivot], M[col]];
+    for (let r = col + 1; r < n; r++) {
+      const factor = M[r][col] / M[col][col];
+      if (factor === 0) continue;
+      for (let c = col; c <= n; c++) M[r][c] -= factor * M[col][c];
+    }
+  }
+  const x = new Array(n).fill(0);
+  for (let r = n - 1; r >= 0; r--) {
+    let sum = M[r][n];
+    for (let c = r + 1; c < n; c++) sum -= M[r][c] * x[c];
+    x[r] = sum / M[r][r];
+  }
+  return x;
+}
+
+// ===== js/graph/scenario.js =====
+// El escenario: el robot recorre un cuadrado de 4 x 4 m en 16 poses (una cada metro,
+// girando 90° en las esquinas). La odometría tiene una deriva de giro en cada paso; al
+// final, el robot reconoce el punto de partida y mide dónde está la pose 0 vista desde
+// la 15: el cierre de ciclo.
+
+const POSE_COUNT = 16;
+const ODOMETRY_NOISE = { distance: 0.02, angle: 0.5 * DEG };   // ruido real de la odometría
+const LOOP_NOISE = { distance: 0.01, angle: 0.3 * DEG };       // ruido real del cierre
+
+/** Movimiento real entre la pose k y la k+1: avanzar 1 m y girar 90° si k+1 es esquina. */
+function trueMotion(k) {
+  return { x: 1, y: 0, theta: (k + 1) % 4 === 0 ? 90 * DEG : 0 };
+}
+
+/**
+ * Devuelve { truth, odometryEstimate, edges }.
+ * Cada arista es { from, to, measurement, kind: 'odometry' | 'loop' }: la medida es la
+ * pose de `to` vista desde `from`.
+ * @param {number} driftPerStep  deriva de giro de la odometría en cada paso (rad)
+ */
+function makeScenario(seed, driftPerStep) {
+  const rng = new Random(seed);
+  const truth = [{ x: 0, y: 0, theta: 0 }];
+  for (let k = 0; k < POSE_COUNT - 1; k++) truth.push(compose(truth[k], trueMotion(k)));
+
+  const edges = [];
+  for (let k = 0; k < POSE_COUNT - 1; k++) {
+    const real = trueMotion(k);
+    edges.push({
+      from: k,
+      to: k + 1,
+      kind: 'odometry',
+      measurement: {
+        x: real.x + rng.gaussian() * ODOMETRY_NOISE.distance,
+        y: real.y + rng.gaussian() * ODOMETRY_NOISE.distance,
+        theta: real.theta + driftPerStep + rng.gaussian() * ODOMETRY_NOISE.angle,
+      },
+    });
+  }
+
+  // Cierre de ciclo: pose 0 vista desde la 15, medida con un sensor (más preciso)
+  const real = relativePose(truth[POSE_COUNT - 1], truth[0]);
+  edges.push({
+    from: POSE_COUNT - 1,
+    to: 0,
+    kind: 'loop',
+    measurement: {
+      x: real.x + rng.gaussian() * LOOP_NOISE.distance,
+      y: real.y + rng.gaussian() * LOOP_NOISE.distance,
+      theta: real.theta + rng.gaussian() * LOOP_NOISE.angle,
+    },
+  });
+
+  // Estimación inicial: encadenar la odometría desde la pose 0, que es conocida
+  const odometryEstimate = [truth[0]];
+  for (const edge of edges.filter((e) => e.kind === 'odometry')) {
+    odometryEstimate.push(compose(odometryEstimate[edge.from], edge.measurement));
+  }
+  return { truth, odometryEstimate, edges };
+}
+
+// ===== js/graph/gauss-newton.js =====
+// Optimización del grafo de poses por Gauss-Newton.
+//
+// Cada arista es un muelle. Su error compara la medida con lo que dice la estimación:
+//     e = (pose j vista desde la pose i) − medida
+// y la energía total es F = Σ eᵀ Ω e, con Ω la matriz de pesos (inversa de la
+// covarianza de la medida). Como «vista desde i» lleva senos y cosenos de θᵢ, F no es
+// una parábola perfecta: en cada iteración se linealiza en la estimación actual, se
+// resuelve como en 1D y se repite.
+
+/** Error de una arista con la estimación actual: [ex, ey, eθ]. */
+function edgeError(poses, edge) {
+  const seen = relativePose(poses[edge.from], poses[edge.to]);
+  return [
+    seen.x - edge.measurement.x,
+    seen.y - edge.measurement.y,
+    wrapAngle(seen.theta - edge.measurement.theta),
+  ];
+}
+
+/**
+ * Jacobianos del error respecto a la pose i (A) y a la pose j (B): cuánto cambia
+ * cada componente del error al mover un poco x, y o θ de cada pose.
+ */
+function edgeJacobians(poses, edge) {
+  const pi = poses[edge.from];
+  const pj = poses[edge.to];
+  const c = Math.cos(pi.theta);
+  const s = Math.sin(pi.theta);
+  const dx = pj.x - pi.x;
+  const dy = pj.y - pi.y;
+  const A = [
+    [-c, -s, -s * dx + c * dy],   // girar la pose i hace que j se vea en otro sitio
+    [s, -c, -c * dx - s * dy],
+    [0, 0, -1],
+  ];
+  const B = [
+    [c, s, 0],
+    [-s, c, 0],
+    [0, 0, 1],
+  ];
+  return { A, B };
+}
+
+/** Energía total F = Σ eᵀ Ω e. */
+function totalError(poses, edges, weights) {
+  let total = 0;
+  for (const edge of edges) {
+    const e = edgeError(poses, edge);
+    const w = weights[edge.kind];
+    total += w[0] * e[0] * e[0] + w[1] * e[1] * e[1] + w[2] * e[2] * e[2];
+  }
+  return total;
+}
+
+/**
+ * Monta H y b linealizando en `poses`. Cada arista i→j suma cuatro bloques de 3x3 en H
+ * (AᵀΩA en ii, AᵀΩB en ij, BᵀΩA en ji, BᵀΩB en jj) y dos en b. Es lo mismo que en 1D,
+ * con bloques en vez de números.
+ * También devuelve, para dibujarla, qué aristas aportan a cada bloque fuera de la diagonal.
+ */
+function buildSystem(poses, edges, weights) {
+  const n = poses.length;
+  const H = zeros(3 * n, 3 * n);
+  const b = new Array(3 * n).fill(0);
+  const blockSources = new Map();  // "i,j" -> tipo de arista
+
+  const addBlock = (row, col, block) => {
+    for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) H[3 * row + r][3 * col + c] += block[r][c];
+  };
+  const addVector = (row, vector) => {
+    for (let r = 0; r < 3; r++) b[3 * row + r] += vector[r];
+  };
+
+  for (const edge of edges) {
+    const e = edgeError(poses, edge);
+    const { A, B } = edgeJacobians(poses, edge);
+    const w = weights[edge.kind];
+    const { from: i, to: j } = edge;
+    addBlock(i, i, transposeWeightedProduct(A, w, A));
+    addBlock(i, j, transposeWeightedProduct(A, w, B));
+    addBlock(j, i, transposeWeightedProduct(B, w, A));
+    addBlock(j, j, transposeWeightedProduct(B, w, B));
+    addVector(i, transposeWeightedVector(A, w, e));
+    addVector(j, transposeWeightedVector(B, w, e));
+    blockSources.set(`${i},${j}`, edge.kind);
+    blockSources.set(`${j},${i}`, edge.kind);
+  }
+  return { H, b, blockSources };
+}
+
+/**
+ * Una iteración de Gauss-Newton: montar H·Δx = −b, anclar la pose 0 (se quitan sus
+ * filas y columnas, como al fijar x₁ en el ejemplo 1D), resolver y mover las poses.
+ */
+function gaussNewtonStep(poses, edges, weights) {
+  const { H, b } = buildSystem(poses, edges, weights);
+  const free = H.slice(3).map((row) => row.slice(3));
+  const delta = solveLinearSystem(free, b.slice(3).map((v) => -v));
+
+  const next = poses.map((pose, k) => {
+    if (k === 0) return pose;
+    const d = delta.slice(3 * (k - 1), 3 * k);
+    return { x: pose.x + d[0], y: pose.y + d[1], theta: wrapAngle(pose.theta + d[2]) };
+  });
+
+  // Cuánto se ha girado y desplazado de media en esta iteración
+  let rotation = 0;
+  let translation = 0;
+  for (let k = 1; k < poses.length; k++) {
+    rotation += Math.abs(wrapAngle(next[k].theta - poses[k].theta));
+    translation += Math.hypot(next[k].x - poses[k].x, next[k].y - poses[k].y);
+  }
+  return {
+    poses: next,
+    meanRotation: rotation / (poses.length - 1),
+    meanTranslation: translation / (poses.length - 1),
+  };
+}
+
+/** Matriz de pesos Ω (diagonal) a partir de desviaciones típicas. */
+function informationFromSigmas(distance, angle, scale = 1) {
+  return [scale / distance ** 2, scale / distance ** 2, scale / angle ** 2];
+}
+
+// ===== js/ui/render.js =====
+// Dibujo de la trayectoria y de la matriz H. Solo lee el estado; no lo modifica.
+
+function readTheme() {
+  const style = getComputedStyle(document.documentElement);
+  const get = (name) => style.getPropertyValue(name).trim();
+  return {
+    bg: get('--bg'), surface: get('--surface'), ink: get('--ink'), muted: get('--muted'),
+    line: get('--line'), odo: get('--odo'), loop: get('--loop'), truth: get('--truth'),
+    drift: get('--drift'),
+  };
+}
+
+/** Proyección de metros a píxeles que encaja unos límites en el lienzo, con el eje y hacia arriba. */
+class Projection {
+  constructor(canvas, bounds) {
+    const margin = 30;
+    this.scale = Math.min((canvas.width - 2 * margin) / (bounds.maxX - bounds.minX),
+                          (canvas.height - 2 * margin) / (bounds.maxY - bounds.minY));
+    this.offsetX = (canvas.width - this.scale * (bounds.maxX - bounds.minX)) / 2 - this.scale * bounds.minX;
+    this.offsetY = (canvas.height + this.scale * (bounds.maxY - bounds.minY)) / 2 + this.scale * bounds.minY;
+  }
+  x(x) { return this.offsetX + this.scale * x; }
+  y(y) { return this.offsetY - this.scale * y; }
+}
+
+/** Límites que contienen todas las poses de varias trayectorias. */
+function boundsOf(trajectories) {
+  const all = trajectories.flat();
+  return {
+    minX: Math.min(...all.map((p) => p.x)) - 0.6, maxX: Math.max(...all.map((p) => p.x)) + 0.6,
+    minY: Math.min(...all.map((p) => p.y)) - 0.6, maxY: Math.max(...all.map((p) => p.y)) + 0.6,
+  };
+}
+
+function strokePolyline(ctx, view, poses) {
+  ctx.beginPath();
+  poses.forEach((p, k) => (k ? ctx.lineTo(view.x(p.x), view.y(p.y)) : ctx.moveTo(view.x(p.x), view.y(p.y))));
+  ctx.stroke();
+}
+
+/** Pose como triángulo que apunta hacia su orientación. */
+function drawPoseMarker(ctx, view, pose, size, fill, stroke) {
+  const x = view.x(pose.x);
+  const y = view.y(pose.y);
+  const a = -pose.theta;  // el eje y del lienzo va hacia abajo
+  ctx.beginPath();
+  ctx.moveTo(x + Math.cos(a) * size, y + Math.sin(a) * size);
+  ctx.lineTo(x + Math.cos(a + 2.45) * size * 0.75, y + Math.sin(a + 2.45) * size * 0.75);
+  ctx.lineTo(x + Math.cos(a - 2.45) * size * 0.75, y + Math.sin(a - 2.45) * size * 0.75);
+  ctx.closePath();
+  if (fill) {
+    ctx.fillStyle = fill;
+    ctx.fill();
+  }
+  if (stroke) {
+    ctx.strokeStyle = stroke;
+    ctx.stroke();
+  }
+}
+
+/**
+ * Trayectorias: la real, la de la odometría, la estimación anterior y la actual con sus
+ * aristas. Para el cierre se dibuja también dónde «quiere» el cierre que esté la pose 0
+ * (vista desde la 15) y el muelle estirado hasta donde está.
+ */
+function drawTrajectories(canvas, view, s, theme, { showTruth, showPrevious }) {
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = theme.surface;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.lineJoin = 'round';
+
+  if (showTruth) {
+    ctx.strokeStyle = theme.truth;
+    ctx.lineWidth = 6;
+    ctx.globalAlpha = 0.28;
+    strokePolyline(ctx, view, [...s.scenario.truth, s.scenario.truth[0]]);
+    ctx.globalAlpha = 1;
+  }
+
+  ctx.setLineDash([6, 5]);
+  ctx.strokeStyle = theme.drift;
+  ctx.lineWidth = 1.5;
+  strokePolyline(ctx, view, s.scenario.odometryEstimate);
+  ctx.setLineDash([]);
+
+  if (showPrevious && s.previous) {
+    ctx.strokeStyle = theme.muted;
+    ctx.globalAlpha = 0.5;
+    ctx.lineWidth = 1.5;
+    strokePolyline(ctx, view, s.previous);
+    for (const p of s.previous) drawPoseMarker(ctx, view, p, 7, null, theme.muted);
+    ctx.globalAlpha = 1;
+  }
+
+  // Aristas de odometría de la estimación actual
+  const poses = s.displayed;
+  ctx.strokeStyle = theme.odo;
+  ctx.lineWidth = 2.5;
+  strokePolyline(ctx, view, poses);
+
+  // Cierre de ciclo: dónde dice la medida que está la pose 0, y el muelle estirado
+  if (s.loopEnabled) {
+    const loop = s.scenario.edges.find((e) => e.kind === 'loop');
+    const wanted = compose(poses[loop.from], loop.measurement);
+    ctx.strokeStyle = theme.loop;
+    ctx.lineWidth = 2.5;
+    ctx.setLineDash([2, 4]);
+    strokePolyline(ctx, view, [poses[loop.from], wanted]);
+    ctx.setLineDash([]);
+    ctx.lineWidth = 1.5;
+    drawPoseMarker(ctx, view, wanted, 11, null, theme.loop);
+    ctx.lineWidth = 3;
+    strokePolyline(ctx, view, [wanted, poses[loop.to]]);
+  }
+
+  poses.forEach((p, k) => {
+    ctx.lineWidth = 1;
+    drawPoseMarker(ctx, view, p, 11, k === 0 ? theme.ink : theme.odo, theme.surface);
+  });
+  ctx.fillStyle = theme.ink;
+  ctx.font = '600 12px "IBM Plex Mono", monospace';
+  ctx.fillText('0 (anclada)', view.x(poses[0].x) + 12, view.y(poses[0].y) + 18);
+  ctx.fillText('15', view.x(poses[15].x) + 12, view.y(poses[15].y) + 4);
+}
+
+/**
+ * Matriz H por bloques de 3x3: diagonal en tinta, bloques de odometría en azul, del
+ * cierre en magenta. La fila y la columna de la pose 0 salen tachadas: está anclada.
+ */
+function drawHessian(canvas, system, n, theme) {
+  const ctx = canvas.getContext('2d');
+  const size = canvas.width;
+  const label = 22;
+  const cell = (size - label) / n;
+  ctx.fillStyle = theme.surface;
+  ctx.fillRect(0, 0, size, size);
+
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
+      let color = null;
+      if (i === j) color = theme.ink;
+      else if (system.blockSources.has(`${i},${j}`)) color = system.blockSources.get(`${i},${j}`) === 'loop' ? theme.loop : theme.odo;
+      if (!color) continue;
+      ctx.fillStyle = color;
+      ctx.fillRect(label + j * cell + 1, label + i * cell + 1, cell - 2, cell - 2);
+    }
+  }
+
+  // Rejilla de bloques
+  ctx.strokeStyle = theme.line;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let k = 0; k <= n; k++) {
+    ctx.moveTo(label + k * cell, label);
+    ctx.lineTo(label + k * cell, size);
+    ctx.moveTo(label, label + k * cell);
+    ctx.lineTo(size, label + k * cell);
+  }
+  ctx.stroke();
+
+  // Pose 0 anclada: fila y columna tachadas
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(label, label, cell, size - label);
+  ctx.rect(label + cell, label, size - label - cell, cell);
+  ctx.clip();
+  ctx.globalAlpha = 0.8;
+  ctx.fillStyle = theme.surface;
+  ctx.fillRect(0, 0, size, size);
+  ctx.globalAlpha = 1;
+  ctx.strokeStyle = theme.muted;
+  ctx.beginPath();
+  for (let t = -size; t < size; t += 6) {
+    ctx.moveTo(t, 0);
+    ctx.lineTo(t + size, size);
+  }
+  ctx.stroke();
+  ctx.restore();
+
+  ctx.fillStyle = theme.muted;
+  ctx.font = '10px "IBM Plex Mono", monospace';
+  ctx.textAlign = 'center';
+  for (let k = 0; k < n; k += 3) {
+    ctx.fillText(k, label + (k + 0.5) * cell, 14);
+    ctx.fillText(k, 10, label + (k + 0.65) * cell);
+  }
+  ctx.fillText(n - 1, label + (n - 0.5) * cell, 14);
+  ctx.fillText(n - 1, 10, label + (n - 0.35) * cell);
+}
+
+// ===== js/ui/main.js =====
+// Estado de la página, controles y animación de cada iteración.
+
+const $ = (id) => document.getElementById(id);
+const ANIMATION_MS = 650;
+const MAX_ITERATIONS = 10;
+
+const controls = {
+  trajectory: $('trajectory'), hessian: $('hessian'),
+  step: $('step'), converge: $('converge'), reset: $('reset'), newSeed: $('newSeed'),
+  drift: $('drift'), driftValue: $('driftValue'),
+  odoAngle: $('odoAngle'), odoAngleValue: $('odoAngleValue'),
+  loopWeight: $('loopWeight'), loopWeightValue: $('loopWeightValue'),
+  loopEnabled: $('loopEnabled'), showTruth: $('showTruth'), showPrevious: $('showPrevious'),
+  iterations: $('iterations'), hessianInfo: $('hessianInfo'), loopInfo: $('loopInfo'),
+  status: $('status'),
+};
+
+const state = {
+  seed: 1,
+  scenario: null,
+  edges: [],          // aristas activas (con o sin cierre)
+  weights: null,      // { odometry: Ω, loop: Ω } como diagonales
+  poses: [],          // estimación actual
+  previous: null,     // estimación antes de la última iteración
+  displayed: [],      // lo que se dibuja (interpolado durante la animación)
+  history: [],        // una fila por iteración
+  animating: false,
+  loopEnabled: true,
+};
+
+/** Lee los controles y vuelve a la estimación de la odometría. */
+function reset() {
+  state.scenario = makeScenario(state.seed, Number(controls.drift.value) * DEG);
+  state.loopEnabled = controls.loopEnabled.checked;
+  state.edges = state.scenario.edges.filter((e) => state.loopEnabled || e.kind === 'odometry');
+  state.weights = {
+    odometry: informationFromSigmas(0.05, Number(controls.odoAngle.value) * DEG),
+    loop: informationFromSigmas(0.02, 0.5 * DEG, 10 ** Number(controls.loopWeight.value)),
+  };
+  state.poses = state.scenario.odometryEstimate;
+  state.displayed = state.poses;
+  state.previous = null;
+  state.history = [{ iteration: 0, error: totalError(state.poses, state.edges, state.weights) }];
+
+  updateLabels();
+  render();
+}
+
+/** Una iteración de Gauss-Newton, animada. Devuelve una promesa que acaba con la animación. */
+function iterate() {
+  const result = gaussNewtonStep(state.poses, state.edges, state.weights);
+  state.previous = state.poses;
+  state.poses = result.poses;
+  state.history.push({
+    iteration: state.history.length,
+    error: totalError(state.poses, state.edges, state.weights),
+    rotation: result.meanRotation,
+    translation: result.meanTranslation,
+  });
+  return animate(state.previous, state.poses);
+}
+
+/** Interpola de una estimación a otra (posición y ángulo) para que se vea el movimiento. */
+function animate(from, to) {
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  state.animating = true;
+  updateButtons();
+  return new Promise((resolve) => {
+    const start = performance.now();
+    const frame = (now) => {
+      const t = reduced ? 1 : Math.min(1, (now - start) / ANIMATION_MS);
+      const k = 1 - (1 - t) ** 3;
+      state.displayed = from.map((a, i) => ({
+        x: a.x + (to[i].x - a.x) * k,
+        y: a.y + (to[i].y - a.y) * k,
+        theta: a.theta + wrapAngle(to[i].theta - a.theta) * k,
+      }));
+      render();
+      if (t < 1) {
+        requestAnimationFrame(frame);
+      } else {
+        state.animating = false;
+        render();
+        resolve();
+      }
+    };
+    requestAnimationFrame(frame);
+  });
+}
+
+/** Itera hasta que las poses casi no se mueven (o MAX_ITERATIONS). */
+async function converge() {
+  for (let k = 0; k < MAX_ITERATIONS; k++) {
+    await iterate();
+    const last = state.history[state.history.length - 1];
+    if (last.rotation < 0.01 * DEG && last.translation < 0.001) break;
+  }
+}
+
+// ---------- Textos ----------
+
+const fmt = (value, digits) => value.toLocaleString('es-ES', { minimumFractionDigits: digits, maximumFractionDigits: digits });
+
+function formatEnergy(value) {
+  if (value < 0.01) return value < 1e-9 ? '0' : value.toExponential(1).replace('.', ',');
+  if (value < 1000) return fmt(value, value < 10 ? 2 : 1);
+  return value.toExponential(2).replace('.', ',').replace('e+', ' · 10^');
+}
+
+/** Error medio de posición frente a la verdad. */
+function meanPositionError(poses) {
+  let total = 0;
+  poses.forEach((p, k) => {
+    total += Math.hypot(p.x - state.scenario.truth[k].x, p.y - state.scenario.truth[k].y);
+  });
+  return total / poses.length;
+}
+
+function updateLabels() {
+  controls.driftValue.textContent = `${fmt(Number(controls.drift.value), 1)}°/paso`;
+  controls.odoAngleValue.textContent = `${fmt(Number(controls.odoAngle.value), 1)}°`;
+  const scale = 10 ** Number(controls.loopWeight.value);
+  controls.loopWeightValue.textContent = `×${scale >= 1 ? fmt(scale, 0) : fmt(scale, scale >= 0.1 ? 1 : 2)}`;
+  controls.loopWeight.disabled = !controls.loopEnabled.checked;
+}
+
+function updateIterationTable() {
+  const rows = state.history.map((h, k) => {
+    const previous = state.history[k - 1];
+    const worse = previous && h.error > previous.error * 1.0001;
+    return `<tr${worse ? ' class="worse"' : ''}>
+      <td>${h.iteration === 0 ? 'odometría' : h.iteration}</td>
+      <td>${formatEnergy(h.error)}${worse ? ' ↑' : ''}</td>
+      <td>${h.rotation === undefined ? '–' : fmt(h.rotation / DEG, 1) + '°'}</td>
+      <td>${h.translation === undefined ? '–' : fmt(h.translation * 100, 0) + ' cm'}</td>
+    </tr>`;
+  });
+  controls.iterations.innerHTML = rows.join('');
+}
+
+function updateInfo(system) {
+  const n = state.poses.length;
+  const nonZero = n + 2 * state.edges.length;
+  controls.hessianInfo.textContent =
+    `${nonZero} de ${n * n} bloques de 3×3 no son cero (${fmt(100 * nonZero / (n * n), 0)} %). ` +
+    'El patrón no cambia entre iteraciones: solo los valores.';
+
+  const loop = state.edges.find((e) => e.kind === 'loop');
+  if (loop) {
+    const e = edgeError(state.poses, loop);
+    controls.loopInfo.textContent =
+      `Muelle del cierre estirado ${fmt(Math.hypot(e[0], e[1]) * 100, 1)} cm y torcido ${fmt(Math.abs(e[2]) / DEG, 1)}°. ` +
+      `Error medio de posición frente a la realidad: ${fmt(meanPositionError(state.poses) * 100, 0)} cm.`;
+  } else {
+    controls.loopInfo.textContent =
+      'Sin cierre de ciclo, la odometría ya cumple todas las restricciones: F = 0 y Gauss-Newton no mueve nada. ' +
+      `Error medio frente a la realidad: ${fmt(meanPositionError(state.poses) * 100, 0)} cm.`;
+  }
+}
+
+function updateButtons() {
+  const last = state.history[state.history.length - 1];
+  const converged = last.rotation !== undefined && last.rotation < 0.01 * DEG && last.translation < 0.001;
+  controls.step.disabled = controls.converge.disabled = state.animating;
+  controls.reset.disabled = state.animating || state.history.length === 1;
+  controls.status.textContent = state.history.length === 1
+    ? 'Estimación inicial: la odometría encadenada.'
+    : `Iteración ${state.history.length - 1}${converged ? ' · convergido' : ''}`;
+}
+
+/**
+ * Encuadre: todo lo que se dibuja (real, odometría, estimación, iteración anterior y
+ * dónde quiere el cierre la pose 0). Se recalcula en cada fotograma, así que durante
+ * la animación el zoom acompaña al movimiento.
+ */
+function currentView() {
+  const shown = [state.scenario.truth, state.scenario.odometryEstimate, state.displayed];
+  if (controls.showPrevious.checked && state.previous) shown.push(state.previous);
+  const loop = state.edges.find((e) => e.kind === 'loop');
+  if (loop) shown.push([compose(state.displayed[loop.from], loop.measurement)]);
+  return new Projection(controls.trajectory, boundsOf(shown));
+}
+
+function render() {
+  const theme = readTheme();
+  drawTrajectories(controls.trajectory, currentView(), state, theme, {
+    showTruth: controls.showTruth.checked,
+    showPrevious: controls.showPrevious.checked,
+  });
+  const system = buildSystem(state.poses, state.edges, state.weights);
+  drawHessian(controls.hessian, system, state.poses.length, theme);
+  updateIterationTable();
+  updateInfo(system);
+  updateButtons();
+}
+
+// ---------- Eventos ----------
+
+controls.step.addEventListener('click', () => iterate());
+controls.converge.addEventListener('click', () => converge());
+controls.reset.addEventListener('click', reset);
+controls.newSeed.addEventListener('click', () => {
+  state.seed = Math.floor(Math.random() * 100000);
+  reset();
+});
+for (const input of [controls.drift, controls.odoAngle, controls.loopWeight]) {
+  input.addEventListener('input', updateLabels);
+  input.addEventListener('change', reset);
+}
+controls.loopEnabled.addEventListener('change', () => {
+  updateLabels();
+  reset();
+});
+for (const box of [controls.showTruth, controls.showPrevious]) box.addEventListener('change', render);
+
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', render);
+new MutationObserver(render).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+reset();
+
+</script>
+
+</body></html>
