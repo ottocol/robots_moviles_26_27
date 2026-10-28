@@ -1,0 +1,512 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Grafo 1D con pesos</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+/* Layout: escena de muelles a todo el ancho; debajo, restricciones (izquierda) y solución (derecha); sistema de ecuaciones plegable al final */
+:root{
+  --bg:#f4f6f9;
+  --surface:#ffffff;
+  --ink:#1a2030;
+  --muted:#586176;
+  --line:#d8dde7;
+  --track:#c3c9d7;
+  --odo:#2361a6;
+  --loop:#c0177a;
+  --good:#1d8657;
+  --font-ui:"Figtree","Avenir Next","Segoe UI",system-ui,sans-serif;
+  --font-num:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#10131a; --surface:#181c26; --ink:#e6e9f1; --muted:#a1a9ba; --line:#2b3141;
+    --track:#3c4356; --odo:#70aaee; --loop:#f065b0; --good:#5ec992; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#10131a; --surface:#181c26; --ink:#e6e9f1; --muted:#a1a9ba; --line:#2b3141;
+  --track:#3c4356; --odo:#70aaee; --loop:#f065b0; --good:#5ec992; color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--font-ui);font-size:17px;line-height:1.45}
+.wrap{max-width:1180px;margin:0 auto;padding-block:28px 56px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.eyebrow{font-size:.78rem;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);font-weight:600;margin:0}
+h1{font-size:clamp(1.8rem,3.4vw,2.6rem);font-weight:800;letter-spacing:-.015em;margin:.15em 0 .35em;text-wrap:balance;line-height:1.1}
+.lede{max-width:66ch;color:var(--muted);font-size:1.05rem;margin:0}
+.lede b{color:var(--ink);font-weight:600}
+
+.scene{margin:22px 0 6px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:6px 6px 2px;overflow-x:auto}
+#scene{display:block;width:100%;height:auto;min-width:600px;touch-action:none;user-select:none;-webkit-user-select:none}
+#scene text{font-family:var(--font-num)}
+#scene .track{stroke:var(--track);stroke-width:2}
+#scene .ruler{stroke:var(--muted);stroke-width:1;opacity:.6}
+#scene .tick{fill:var(--muted);font-size:13px;text-anchor:middle}
+#scene .lbl{font-size:15px;text-anchor:middle;font-weight:500}
+#scene .lbl-odo{fill:var(--odo)}
+#scene .lbl-loop{fill:var(--loop)}
+#scene .lbl-e{fill:var(--muted);font-size:14px;text-anchor:middle}
+#scene .val{fill:var(--ink);font-size:16px;font-weight:600;text-anchor:middle}
+#scene .val-sub{fill:var(--muted);font-size:12px;text-anchor:middle}
+#scene .node{fill:var(--ink)}
+#scene .node-fixed{fill:var(--muted)}
+#scene .node-lbl{fill:var(--bg);font-family:var(--font-ui);font-size:18px;font-weight:700;text-anchor:middle}
+#scene .hit{fill:transparent;cursor:grab}
+#scene.dragging .hit{cursor:grabbing}
+#scene .ghost{fill:none;stroke-width:2;stroke-dasharray:5 5}
+#scene .ring{fill:none;stroke:var(--good);stroke-width:2.5}
+#scene .leg{stroke:var(--loop);stroke-width:1.5;opacity:.55}
+#scene .spring{fill:none;stroke-linejoin:round;stroke-linecap:round}
+.legend{display:flex;flex-wrap:wrap;gap:6px 22px;font-size:.9rem;color:var(--muted);margin:8px 2px 26px}
+.legend span{display:inline-flex;align-items:center;gap:8px}
+.legend svg{flex:none}
+
+.presets{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 18px}
+.presets button{font:inherit;font-size:.95rem;padding:8px 15px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer}
+.presets button:hover{border-color:var(--muted)}
+.presets button[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:var(--bg)}
+button:focus-visible,input:focus-visible,summary:focus-visible{outline:3px solid var(--odo);outline-offset:2px}
+
+.grid{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:28px;align-items:start}
+@media (max-width:860px){.grid{grid-template-columns:1fr}}
+.panel{min-width:0}
+.panel h2{font-size:.8rem;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);margin:0 0 8px;font-weight:700}
+
+.constraint{display:grid;grid-template-columns:6px minmax(0,1fr);gap:0 14px;padding:14px 0;border-top:1px solid var(--line)}
+.constraint:last-child{border-bottom:1px solid var(--line)}
+.constraint .sw{border-radius:3px;background:var(--c)}
+.c-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;margin-bottom:8px}
+.c-head strong{font-weight:700;font-size:1.05rem}
+.c-head .edge{font-family:var(--font-num);font-size:.9rem;color:var(--c)}
+.c-head label.toggle{margin-left:auto;font-size:.9rem;color:var(--muted);display:inline-flex;gap:6px;align-items:center;cursor:pointer}
+.c-body{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px 18px;align-items:center}
+.c-body .field{display:flex;flex-direction:column;gap:2px}
+.c-body .field span{font-size:.78rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+input[type="number"]{font-family:var(--font-num);font-size:1rem;width:6.2em;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink)}
+.weight{display:flex;flex-direction:column;gap:2px;min-width:0}
+.weight .wl{display:flex;justify-content:space-between;font-size:.78rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.weight output{font-family:var(--font-num);font-size:1rem;color:var(--ink);text-transform:none;letter-spacing:0;font-weight:600}
+input[type="range"]{width:100%;accent-color:var(--c);margin:6px 0 0}
+.constraint.off .c-body{opacity:.4}
+
+.positions{display:flex;flex-wrap:wrap;gap:12px 36px;margin:2px 0 6px}
+.pos{display:flex;align-items:baseline;gap:8px}
+.pos .pl{font-size:1.2rem;font-weight:700}
+.pos .pv{font-family:var(--font-num);font-size:2.5rem;font-weight:500;line-height:1.1;font-variant-numeric:tabular-nums}
+.pos .pu{color:var(--muted)}
+.energy{margin:4px 0 12px;color:var(--muted)}
+.energy b{font-family:var(--font-num);color:var(--ink);font-weight:600}
+.opt-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;margin-bottom:24px}
+#optBtn{font:inherit;font-weight:700;padding:9px 20px;border-radius:10px;border:0;background:var(--good);color:var(--bg);cursor:pointer}
+#optBtn:disabled{background:var(--line);color:var(--muted);cursor:default}
+#optHint{font-size:.92rem;color:var(--muted)}
+.panel h3{font-size:1.02rem;margin:0 0 4px;font-weight:700}
+#dText{margin:0 0 12px;color:var(--muted);max-width:60ch}
+#dText b{color:var(--ink);font-family:var(--font-num);font-weight:600}
+.bars{display:grid;gap:10px}
+.bar-row{display:grid;grid-template-columns:5.6em minmax(0,1fr) 4.6em 3.2em;align-items:center;gap:10px;font-variant-numeric:tabular-nums}
+.bar-row .bl{font-family:var(--font-num);font-size:.92rem;color:var(--c)}
+.bar{height:14px;border-radius:7px;background:var(--line);overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:var(--c);border-radius:7px;transition:width .25s ease}
+.bar-row .bv{font-family:var(--font-num);font-size:.92rem;text-align:right}
+.bar-row .bp{font-family:var(--font-num);font-size:.92rem;color:var(--muted);text-align:right}
+.hint{font-size:.92rem;color:var(--muted);margin:14px 0 0;max-width:60ch}
+
+details.system{margin-top:32px;border-top:1px solid var(--line);padding-top:14px}
+details.system summary{cursor:pointer;font-weight:700;font-size:1.02rem}
+.sys-body{padding:14px 0 4px;display:grid;gap:14px}
+.formula{font-family:var(--font-num);font-size:.98rem;overflow-x:auto;white-space:nowrap;padding:2px 0}
+.eq{display:flex;align-items:center;gap:14px;flex-wrap:wrap;font-family:var(--font-num);font-variant-numeric:tabular-nums}
+.mat{display:grid;gap:4px 16px;padding:6px 12px;border-left:2px solid var(--ink);border-right:2px solid var(--ink);border-radius:6px}
+.mat.c2{grid-template-columns:auto auto}
+.mat.c1{grid-template-columns:auto}
+.mat span{text-align:right;min-width:3.4em}
+.mat.vars span{min-width:1.6em;text-align:center}
+.sys-note{color:var(--muted);max-width:68ch;margin:0}
+
+@media (prefers-reduced-motion: reduce){.bar i{transition:none}}
+@media (max-width:520px){
+  .pos .pv{font-size:2rem}
+  .bar-row{grid-template-columns:5em minmax(0,1fr) 4.4em}
+  .bar-row .bp{display:none}
+}
+</style>
+
+<div class="wrap">
+  <header>
+    <p class="eyebrow">Robots Móviles · Tema 3 · SLAM basado en grafos</p>
+    <h1>Ejemplo 1D con pesos</h1>
+    <p class="lede">Cada medida es un muelle y su <b>peso es la rigidez</b>: cuanto más fiable es la medida, más cuesta estirarla. El optimizador coloca x₂ y x₃ donde la energía total es mínima. Cambia los pesos o arrastra los nodos y pulsa Optimizar.</p>
+  </header>
+
+  <div class="scene">
+    <svg id="scene" viewBox="0 0 1000 305" role="img" aria-label="Grafo 1D con tres restricciones"></svg>
+  </div>
+  <div class="legend">
+    <span><svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><circle cx="13" cy="13" r="10" fill="none" stroke="var(--odo)" stroke-width="2" stroke-dasharray="4 4"/></svg>Solo odometría</span>
+    <span><svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><circle cx="13" cy="13" r="10" fill="none" stroke="var(--loop)" stroke-width="2" stroke-dasharray="4 4"/></svg>Lo que dice el cierre de ciclo sobre x₃</span>
+    <span><svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><circle cx="13" cy="13" r="10" fill="none" stroke="var(--good)" stroke-width="2.5"/></svg>Óptimo (al desajustar a mano)</span>
+    <span>Grosor del muelle = peso</span>
+  </div>
+
+  <div class="presets" role="group" aria-label="Escenarios">
+    <button type="button" data-preset="equal">Pesos iguales</button>
+    <button type="button" data-preset="loop10">Cierre de ciclo 10× más fiable</button>
+    <button type="button" data-preset="odo10">Odometría 10× más fiable</button>
+    <button type="button" data-preset="noloop">Sin cierre de ciclo</button>
+  </div>
+
+  <div class="grid">
+    <section class="panel" aria-labelledby="h-restr">
+      <h2 id="h-restr">Restricciones</h2>
+
+      <div class="constraint" style="--c:var(--odo)">
+        <div class="sw"></div>
+        <div>
+          <div class="c-head"><strong>Odometría</strong><span class="edge">x₂ − x₁ = z₁</span></div>
+          <div class="c-body">
+            <label class="field"><span>Medida z₁ (m)</span><input id="z0" type="number" step="0.1" min="-5" max="20" value="2.0"></label>
+            <div class="weight"><div class="wl"><label for="w0">Peso w₁</label><output id="wv0" for="w0">1,0</output></div>
+              <input id="w0" type="range" min="-1" max="1.30103" step="0.001" value="0"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="constraint" style="--c:var(--odo)">
+        <div class="sw"></div>
+        <div>
+          <div class="c-head"><strong>Odometría</strong><span class="edge">x₃ − x₂ = z₂</span></div>
+          <div class="c-body">
+            <label class="field"><span>Medida z₂ (m)</span><input id="z1" type="number" step="0.1" min="-5" max="20" value="1.8"></label>
+            <div class="weight"><div class="wl"><label for="w1">Peso w₂</label><output id="wv1" for="w1">1,0</output></div>
+              <input id="w1" type="range" min="-1" max="1.30103" step="0.001" value="0"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="constraint" id="c-loop" style="--c:var(--loop)">
+        <div class="sw"></div>
+        <div>
+          <div class="c-head"><strong>Cierre de ciclo</strong><span class="edge">x₃ − x₁ = z₃</span>
+            <label class="toggle"><input id="loopOn" type="checkbox" checked> Incluir</label></div>
+          <div class="c-body">
+            <label class="field"><span>Medida z₃ (m)</span><input id="z2" type="number" step="0.1" min="-5" max="20" value="3.1"></label>
+            <div class="weight"><div class="wl"><label for="w2">Peso w₃</label><output id="wv2" for="w2">1,0</output></div>
+              <input id="w2" type="range" min="-1" max="1.30103" step="0.001" value="0"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" aria-labelledby="h-sol">
+      <h2 id="h-sol">Posiciones</h2>
+      <div class="positions">
+        <div class="pos"><span class="pl">x₂</span><span class="pv" id="vx2">1,77</span><span class="pu">m</span></div>
+        <div class="pos"><span class="pl">x₃</span><span class="pv" id="vx3">3,33</span><span class="pu">m</span></div>
+      </div>
+      <p class="energy">Energía del grafo F = <b id="vF">0,163</b> <span id="vFmin"></span></p>
+      <div class="opt-row">
+        <button type="button" id="optBtn" disabled>Optimizar</button>
+        <span id="optHint" aria-live="polite">El grafo está en su mínimo.</span>
+      </div>
+
+      <h3>Cómo se reparte el error</h3>
+      <p id="dText"></p>
+      <div class="bars">
+        <div class="bar-row" style="--c:var(--odo)"><span class="bl">x₁→x₂</span><div class="bar"><i id="b0"></i></div><span class="bv" id="e0"></span><span class="bp" id="p0"></span></div>
+        <div class="bar-row" style="--c:var(--odo)"><span class="bl">x₂→x₃</span><div class="bar"><i id="b1"></i></div><span class="bv" id="e1"></span><span class="bp" id="p1"></span></div>
+        <div class="bar-row" style="--c:var(--loop)"><span class="bl">x₁→x₃</span><div class="bar"><i id="b2"></i></div><span class="bv" id="e2"></span><span class="bp" id="p2"></span></div>
+      </div>
+      <p class="hint">Con pesos iguales cada restricción absorbe un tercio. Al subir un peso, esa restricción cede menos y el error se va a las demás.</p>
+    </section>
+  </div>
+
+  <details class="system">
+    <summary>Ver el sistema de ecuaciones</summary>
+    <div class="sys-body">
+      <div class="formula">F(x₂, x₃) = w₁(x₂ − z₁)² + w₂(x₃ − x₂ − z₂)² + w₃(x₃ − z₃)²</div>
+      <p class="sys-note">Derivando e igualando a cero sale un sistema lineal H·x = b:</p>
+      <div class="eq" id="eq"></div>
+      <p class="sys-note">Cada restricción solo aporta términos en las filas y columnas de los dos nodos que une. En un grafo real con miles de nodos casi toda la matriz H son ceros: es dispersa, y por eso se resuelve rápido.</p>
+    </div>
+  </details>
+</div>
+
+<script>
+(function(){
+  var DEF_Z = [2.0, 1.8, 3.1];
+  var PRESETS = {
+    equal:  {w:[1,1,1],   loop:true},
+    loop10: {w:[1,1,10],  loop:true},
+    odo10:  {w:[10,10,1], loop:true},
+    noloop: {w:[1,1,1],   loop:false}
+  };
+  var state = { z: DEF_Z.slice(), w:[1,1,1], loop:true, x2:0, x3:0, dragging:null };
+  var VB_W = 1000, PADX = 72, R = 22, LOOP_Y = 84, AXIS_Y = 196, RULER_Y = 270;
+  var svg = document.getElementById('scene');
+  var range = {min:-0.45, max:4.45}, frozen = null, anim = null;
+  var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var $ = function(id){ return document.getElementById(id); };
+
+  function fmt(v, d){
+    if (d === undefined) d = 2;
+    if (Math.abs(v) < 0.5 * Math.pow(10, -d)) v = 0;
+    return v.toLocaleString('es-ES', {minimumFractionDigits:d, maximumFractionDigits:d}).replace('-', '−');
+  }
+  function fmtS(v, d){
+    if (d === undefined) d = 2;
+    var s = fmt(v, d);
+    return (v >= 0.5 * Math.pow(10, -d) ? '+' : '') + s;
+  }
+  function fmtW(w){ return w < 9.95 ? fmt(w, 1) : fmt(w, 0); }
+
+  function weights(){ return [state.w[0], state.w[1], state.loop ? state.w[2] : 0]; }
+  function solve(){
+    var w = weights(), z = state.z;
+    var a = w[0] + w[1], b = -w[1], d = w[1] + w[2];
+    var r1 = w[0]*z[0] - w[1]*z[1], r2 = w[1]*z[1] + w[2]*z[2];
+    var det = a*d - b*b;
+    return { x2:(r1*d - b*r2)/det, x3:(a*r2 - b*r1)/det, a:a, b:b, d:d, r1:r1, r2:r2 };
+  }
+  function resid(x2, x3){ var z = state.z; return [x2 - z[0], x3 - x2 - z[1], x3 - z[2]]; }
+  function energy(x2, x3){ var e = resid(x2, x3), w = weights(); return w[0]*e[0]*e[0] + w[1]*e[1]*e[1] + w[2]*e[2]*e[2]; }
+
+  function computeRange(o){
+    var z = state.z;
+    var vals = [0, z[0], z[0] + z[1], o.x2, o.x3, state.x2, state.x3];
+    if (state.loop) vals.push(z[2]);
+    var mn = Math.min.apply(null, vals) - 0.45, mx = Math.max.apply(null, vals) + 0.45;
+    if (mx - mn < 4.9) mx = mn + 4.9;
+    return {min:mn, max:mx};
+  }
+
+  function zig(xa, xb, y, amp, coils){
+    var L = xb - xa;
+    if (L < 34) return 'M' + xa + ',' + y + 'L' + xb + ',' + y;
+    var lead = Math.min(14, L * 0.15), body = L - 2*lead, n = coils * 2;
+    var d = 'M' + xa.toFixed(1) + ',' + y + 'L' + (xa + lead).toFixed(1) + ',' + y;
+    for (var i = 1; i <= n; i++){
+      var x = xa + lead + body * (i - 0.5) / n;
+      d += 'L' + x.toFixed(1) + ',' + (y + (i % 2 ? -amp : amp));
+    }
+    d += 'L' + (xb - lead).toFixed(1) + ',' + y + 'L' + xb.toFixed(1) + ',' + y;
+    return d;
+  }
+  function sw(w){ return (1.4 + 1.25 * Math.log2(1 + w)).toFixed(2); }
+
+  function drawScene(o){
+    range = state.dragging ? frozen : computeRange(o);
+    var X = function(m){ return PADX + (m - range.min) / (range.max - range.min) * (VB_W - 2*PADX); };
+    var z = state.z, w = weights(), e = resid(state.x2, state.x3);
+    var p1 = X(0), p2 = X(state.x2), p3 = X(state.x3);
+    var s = '';
+
+    // Regla
+    s += '<line class="ruler" x1="' + (PADX - 36) + '" y1="' + RULER_Y + '" x2="' + (VB_W - PADX + 36) + '" y2="' + RULER_Y + '"/>';
+    var step = (range.max - range.min) > 7 ? 1 : 0.5;
+    var k0 = Math.ceil(range.min / step), k1 = Math.floor(range.max / step);
+    for (var k = k0; k <= k1; k++){
+      var t = k * step, x = X(t);
+      s += '<line class="ruler" x1="' + x + '" y1="' + RULER_Y + '" x2="' + x + '" y2="' + (RULER_Y - 6) + '"/>';
+      s += '<text class="tick" x="' + x + '" y="' + (RULER_Y + 19) + '">' + fmt(t, 1) + '</text>';
+    }
+    s += '<text class="tick" x="' + (VB_W - 14) + '" y="' + (RULER_Y + 19) + '" style="text-anchor:end">m</text>';
+    s += '<line class="track" x1="' + (PADX - 36) + '" y1="' + AXIS_Y + '" x2="' + (VB_W - PADX + 36) + '" y2="' + AXIS_Y + '"/>';
+
+    // Estimaciones fantasma
+    s += '<circle class="ghost" cx="' + X(z[0]) + '" cy="' + AXIS_Y + '" r="' + R + '" stroke="var(--odo)" opacity=".75"/>';
+    s += '<circle class="ghost" cx="' + X(z[0] + z[1]) + '" cy="' + AXIS_Y + '" r="' + R + '" stroke="var(--odo)" opacity=".75"/>';
+    if (state.loop) s += '<circle class="ghost" cx="' + X(z[2]) + '" cy="' + AXIS_Y + '" r="' + R + '" stroke="var(--loop)" opacity=".8"/>';
+
+    // Muelle del cierre de ciclo
+    var mid13 = (p1 + p3) / 2;
+    s += '<line class="leg" x1="' + p1 + '" y1="' + (AXIS_Y - R) + '" x2="' + p1 + '" y2="' + LOOP_Y + '"/>';
+    s += '<line class="leg" x1="' + p3 + '" y1="' + (AXIS_Y - R) + '" x2="' + p3 + '" y2="' + LOOP_Y + '"/>';
+    if (state.loop){
+      var la = Math.min(p1, p3), lb = Math.max(p1, p3);
+      s += '<path class="spring" d="' + zig(la, lb, LOOP_Y, 9, 14) + '" stroke="var(--loop)" stroke-width="' + sw(w[2]) + '"/>';
+      s += '<text class="lbl lbl-loop" x="' + mid13 + '" y="' + (LOOP_Y - 24) + '">cierre de ciclo · z₃ = ' + fmt(z[2]) + ' m · e = ' + fmtS(e[2]) + '</text>';
+    } else {
+      s += '<line x1="' + p1 + '" y1="' + LOOP_Y + '" x2="' + p3 + '" y2="' + LOOP_Y + '" stroke="var(--loop)" stroke-width="1.5" stroke-dasharray="3 6" opacity=".5"/>';
+      s += '<text class="lbl lbl-loop" x="' + mid13 + '" y="' + (LOOP_Y - 24) + '" opacity=".7">cierre de ciclo desactivado</text>';
+    }
+
+    // Muelles de odometría
+    var segs = [[p1, p2, 0], [p2, p3, 1]];
+    segs.forEach(function(sg){
+      var a = sg[0], b = sg[1], i = sg[2];
+      var xa = Math.min(a, b) + R, xb = Math.max(a, b) - R, mid = (a + b) / 2;
+      if (xb > xa) s += '<path class="spring" d="' + zig(xa, xb, AXIS_Y, 9, 7) + '" stroke="var(--odo)" stroke-width="' + sw(w[i]) + '"/>';
+      s += '<text class="lbl lbl-odo" x="' + mid + '" y="' + (AXIS_Y - 52) + '">z' + (i ? '₂' : '₁') + ' = ' + fmt(z[i]) + ' m</text>';
+      s += '<text class="lbl-e" x="' + mid + '" y="' + (AXIS_Y - 32) + '">e = ' + fmtS(e[i]) + '</text>';
+    });
+
+    // Anillos del óptimo si el grafo está desajustado
+    var off = Math.abs(o.x2 - state.x2) > 0.004 || Math.abs(o.x3 - state.x3) > 0.004;
+    if (off && !anim){
+      s += '<circle class="ring" cx="' + X(o.x2) + '" cy="' + AXIS_Y + '" r="' + (R + 6) + '"/>';
+      s += '<circle class="ring" cx="' + X(o.x3) + '" cy="' + AXIS_Y + '" r="' + (R + 6) + '"/>';
+    }
+
+    // Nodos
+    s += '<circle class="node-fixed" cx="' + p1 + '" cy="' + AXIS_Y + '" r="' + R + '"/>';
+    s += '<text class="node-lbl" x="' + p1 + '" y="' + (AXIS_Y + 6) + '">x₁</text>';
+    s += '<text class="val" x="' + p1 + '" y="' + (AXIS_Y + R + 22) + '">0,00</text>';
+    s += '<text class="val-sub" x="' + p1 + '" y="' + (AXIS_Y + R + 37) + '">fijo</text>';
+    [[p2, 'x2', 'x₂', state.x2], [p3, 'x3', 'x₃', state.x3]].forEach(function(n){
+      s += '<circle class="node" cx="' + n[0] + '" cy="' + AXIS_Y + '" r="' + R + '"/>';
+      s += '<text class="node-lbl" x="' + n[0] + '" y="' + (AXIS_Y + 6) + '">' + n[2] + '</text>';
+      s += '<text class="val" x="' + n[0] + '" y="' + (AXIS_Y + R + 22) + '">' + fmt(n[3]) + '</text>';
+    });
+    // Zonas de arrastre encima de todo
+    s += '<circle class="hit" data-node="x2" cx="' + p2 + '" cy="' + AXIS_Y + '" r="34"/>';
+    s += '<circle class="hit" data-node="x3" cx="' + p3 + '" cy="' + AXIS_Y + '" r="34"/>';
+
+    svg.innerHTML = s;
+    svg.setAttribute('aria-label', 'Grafo 1D: x₁ = 0, x₂ = ' + fmt(state.x2) + ' m, x₃ = ' + fmt(state.x3) + ' m');
+    return off;
+  }
+
+  function render(){
+    var o = solve();
+    var off = drawScene(o);
+    var z = state.z, w = weights(), e = resid(state.x2, state.x3);
+
+    $('vx2').textContent = fmt(state.x2);
+    $('vx3').textContent = fmt(state.x3);
+    $('vF').textContent = fmt(energy(state.x2, state.x3), 3);
+    $('vFmin').textContent = off ? '(mínimo posible: ' + fmt(energy(o.x2, o.x3), 3) + ')' : '';
+    $('optBtn').disabled = !off || !!anim;
+    $('optHint').textContent = anim ? 'Optimizando…' : (off ? 'Desajustado a mano: los anillos verdes marcan el óptimo.' : 'El grafo está en su mínimo.');
+
+    var D = z[0] + z[1] - z[2];
+    if (state.loop){
+      $('dText').innerHTML = 'La odometría acumulada dice x₃ = <b>' + fmt(z[0] + z[1]) + '</b> y el cierre de ciclo dice <b>' + fmt(z[2]) + '</b>. Discrepan en <b>' + fmt(Math.abs(D)) + ' m</b>, y las tres restricciones se lo reparten:';
+    } else {
+      $('dText').innerHTML = 'Sin cierre de ciclo no hay nada que contradiga a la odometría: los muelles quedan en su longitud medida y el error es cero.';
+    }
+    var used = [e[0], e[1], state.loop ? e[2] : 0];
+    var tot = Math.abs(used[0]) + Math.abs(used[1]) + Math.abs(used[2]);
+    for (var i = 0; i < 3; i++){
+      var share = tot > 1e-9 ? Math.abs(used[i]) / tot : 0;
+      $('b' + i).style.width = (share * 100).toFixed(1) + '%';
+      if (i === 2 && !state.loop){ $('e2').textContent = '—'; $('p2').textContent = ''; }
+      else { $('e' + i).textContent = fmtS(used[i]); $('p' + i).textContent = Math.round(share * 100) + ' %'; }
+    }
+
+    $('c-loop').classList.toggle('off', !state.loop);
+    drawSystem(o);
+  }
+
+  function drawSystem(o){
+    function cells(arr){ return arr.map(function(v){ return '<span>' + v + '</span>'; }).join(''); }
+    $('eq').innerHTML =
+      '<span>H =</span><div class="mat c2">' + cells([fmt(o.a), fmt(o.b), fmt(o.b), fmt(o.d)]) + '</div>' +
+      '<div class="mat c1 vars">' + cells(['x₂', 'x₃']) + '</div><span>=</span>' +
+      '<div class="mat c1">' + cells([fmt(o.r1), fmt(o.r2)]) + '</div>' +
+      '<span>→ x₂ = ' + fmt(o.x2) + ', x₃ = ' + fmt(o.x3) + '</span>';
+  }
+
+  function syncToOpt(){ var o = solve(); state.x2 = o.x2; state.x3 = o.x3; }
+  function cancelAnim(){ if (anim){ cancelAnimationFrame(anim.raf); anim = null; } }
+  function animateTo(){
+    cancelAnim();
+    var o = solve();
+    if (reduce){ state.x2 = o.x2; state.x3 = o.x3; render(); return; }
+    var from2 = state.x2, from3 = state.x3, t0 = performance.now(), dur = 650;
+    anim = {};
+    var frame = function(now){
+      var k = Math.min(1, (now - t0) / dur), ease = 1 - Math.pow(1 - k, 3);
+      state.x2 = from2 + (o.x2 - from2) * ease;
+      state.x3 = from3 + (o.x3 - from3) * ease;
+      if (k < 1){ render(); anim.raf = requestAnimationFrame(frame); }
+      else { anim = null; state.x2 = o.x2; state.x3 = o.x3; render(); }
+    };
+    anim.raf = requestAnimationFrame(frame);
+  }
+
+  function setInputsFromState(){
+    for (var i = 0; i < 3; i++){
+      $('z' + i).value = state.z[i];
+      $('w' + i).value = Math.log10(state.w[i]);
+      $('wv' + i).textContent = fmtW(state.w[i]);
+    }
+    $('loopOn').checked = state.loop;
+  }
+  function markPreset(){
+    var btns = document.querySelectorAll('[data-preset]');
+    btns.forEach(function(b){
+      var p = PRESETS[b.dataset.preset];
+      var match = p.loop === state.loop &&
+        state.z.every(function(v, i){ return Math.abs(v - DEF_Z[i]) < 1e-6; }) &&
+        p.w.every(function(v, i){ return (!p.loop && i === 2) || Math.abs(v - state.w[i]) / v < 0.01; });
+      b.setAttribute('aria-pressed', match ? 'true' : 'false');
+    });
+  }
+
+  // Controles
+  for (var i = 0; i < 3; i++){
+    (function(i){
+      $('w' + i).addEventListener('input', function(){
+        state.w[i] = Math.pow(10, parseFloat(this.value));
+        $('wv' + i).textContent = fmtW(state.w[i]);
+        cancelAnim(); syncToOpt(); markPreset(); render();
+      });
+      $('z' + i).addEventListener('input', function(){
+        var v = parseFloat(String(this.value).replace(',', '.'));
+        if (isNaN(v)) return;
+        state.z[i] = v;
+        cancelAnim(); syncToOpt(); markPreset(); render();
+      });
+    })(i);
+  }
+  $('loopOn').addEventListener('change', function(){
+    state.loop = this.checked; markPreset(); animateTo();
+  });
+  document.querySelectorAll('[data-preset]').forEach(function(b){
+    b.addEventListener('click', function(){
+      var p = PRESETS[b.dataset.preset];
+      state.z = DEF_Z.slice(); state.w = p.w.slice(); state.loop = p.loop;
+      setInputsFromState(); markPreset(); animateTo();
+    });
+  });
+  $('optBtn').addEventListener('click', animateTo);
+
+  // Arrastre de nodos
+  function toMeters(evt){
+    var pt = svg.createSVGPoint(); pt.x = evt.clientX; pt.y = evt.clientY;
+    var p = pt.matrixTransform(svg.getScreenCTM().inverse());
+    var m = range.min + (p.x - PADX) / (VB_W - 2*PADX) * (range.max - range.min);
+    return Math.max(range.min + 0.1, Math.min(range.max - 0.1, m));
+  }
+  svg.addEventListener('pointerdown', function(evt){
+    var t = evt.target.closest ? evt.target.closest('[data-node]') : null;
+    if (!t) return;
+    cancelAnim();
+    state.dragging = t.getAttribute('data-node');
+    frozen = {min:range.min, max:range.max};
+    svg.classList.add('dragging');
+    try { svg.setPointerCapture(evt.pointerId); } catch (err) {}
+    evt.preventDefault();
+  });
+  svg.addEventListener('pointermove', function(evt){
+    if (!state.dragging) return;
+    state[state.dragging] = toMeters(evt);
+    markPreset(); render();
+  });
+  function endDrag(){
+    if (!state.dragging) return;
+    state.dragging = null; frozen = null;
+    svg.classList.remove('dragging');
+    render();
+  }
+  svg.addEventListener('pointerup', endDrag);
+  svg.addEventListener('pointercancel', endDrag);
+
+  setInputsFromState(); syncToOpt(); markPreset(); render();
+})();
+</script>
+
+</body></html>

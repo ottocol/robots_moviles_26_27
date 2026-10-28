@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>FastSLAM con rejillas</title>
+  <meta name="claude:viewport-fit-sides" content="cover">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="css/demo.css">
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>FastSLAM con rejillas de ocupación</h1>
+    <p>Cada partícula lleva una hipótesis de trayectoria y su propio mapa (log-odds). Recorre el ciclo, deja que se pare justo antes de volver a ver la zona del principio y aplica ese escaneo para ver cómo cambian los pesos.</p>
+  </header>
+
+  <div class="banner" id="banner" hidden>
+    <p id="bannerText"></p>
+    <button class="warn" id="applyScan">Aplicar el escaneo</button>
+  </div>
+
+  <div class="views">
+    <section class="panel">
+      <h2>Mundo real <span id="worldInfo"></span></h2>
+      <canvas class="view" id="worldCanvas" width="720" height="560"
+              aria-label="Mundo real con robot, odometría y partículas"></canvas>
+      <div class="legend">
+        <span><i class="swatch-truth"></i>robot real</span>
+        <span><i class="swatch-odometry"></i>solo odometría</span>
+        <span><i class="swatch-particle"></i>partículas (opacidad = peso)</span>
+        <span><i class="swatch-scan"></i>láser</span>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Mapa de la partícula <span id="mapInfo"></span></h2>
+      <canvas class="view" id="mapCanvas" width="720" height="560"
+              aria-label="Mapa de ocupación de la partícula seleccionada"></canvas>
+      <div class="legend">
+        <span>negro = ocupado, blanco = libre, gris = desconocido</span>
+        <span><i class="swatch-particle"></i>trayectoria de la partícula</span>
+        <span><i class="swatch-walls"></i>paredes reales (opcional)</span>
+      </div>
+    </section>
+  </div>
+
+  <section class="panel console">
+    <div class="group">
+      <h3>Mover el robot</h3>
+      <div class="pad">
+        <span></span>
+        <button id="forward" title="Avanzar 25 cm (↑)">↑</button>
+        <span></span>
+        <button id="turnLeft" title="Girar 10° a la izquierda (←)">⟲</button>
+        <button id="backward" title="Retroceder 25 cm (↓)">↓</button>
+        <button id="turnRight" title="Girar 10° a la derecha (→)">⟳</button>
+      </div>
+      <div class="row">
+        <button class="primary" id="play">▶ Recorrer el ciclo</button>
+        <button id="step" title="Un paso de la ruta automática (Intro)">Paso</button>
+      </div>
+      <div class="row">
+        <button id="undo" title="Deshacer el último paso (Retroceso)">◀ Atrás</button>
+        <button id="undo10" title="Deshacer los últimos 10 pasos">◀◀ 10 pasos</button>
+      </div>
+      <label>Velocidad
+        <input type="range" id="speed" min="2" max="30" value="10">
+        <span class="mono" id="speedValue">10</span>&nbsp;pasos/s
+      </label>
+    </div>
+
+    <div class="group">
+      <h3>Filtro</h3>
+      <div class="row">
+        <label>Partículas
+          <select id="particleCount">
+            <option>10</option>
+            <option>30</option>
+            <option selected>50</option>
+            <option>100</option>
+            <option>200</option>
+          </select>
+        </label>
+        <label>Celda
+          <select id="resolution">
+            <option value="0.2">20 cm</option>
+            <option value="0.1" selected>10 cm</option>
+            <option value="0.05">5 cm</option>
+          </select>
+        </label>
+        <label>Semilla
+          <input type="number" id="seed" value="3" min="0" max="999999" step="1"
+                 inputmode="numeric" list="seedSuggestions">
+        </label>
+        <datalist id="seedSuggestions">
+          <option value="1"></option>
+          <option value="2"></option>
+          <option value="3"></option>
+          <option value="4"></option>
+          <option value="5"></option>
+        </datalist>
+        <button id="randomSeed" title="Elegir una semilla al azar">Aleatoria</button>
+        <button id="restart">Reiniciar</button>
+      </div>
+      <div class="row">
+        <label>Ruido del modelo de movimiento
+          <input type="range" id="motionNoise" min="0.5" max="3" step="0.25" value="2">
+          <span class="mono" id="motionNoiseValue">2</span>
+        </label>
+      </div>
+      <div class="row">
+        <label><input type="checkbox" id="pauseBeforeClosure" checked> Parar antes de cerrar el ciclo</label>
+        <label><input type="checkbox" id="improvedProposal"> Propuesta mejorada (scan matching)</label>
+      </div>
+      <div class="row">
+        <label><input type="checkbox" id="followBest" checked> Mapa grande: siempre la mejor partícula</label>
+        <label><input type="checkbox" id="showAllTrajectories"> Trayectorias de todas</label>
+        <label><input type="checkbox" id="showRealWalls"> Paredes reales sobre el mapa</label>
+      </div>
+    </div>
+
+    <div class="group">
+      <h3>Estado</h3>
+      <div class="stats">
+        <div>Paso <b id="statStep">0</b></div>
+        <div>Neff <b id="statNeff">–</b></div>
+        <div>Remuestreos <b id="statResamples">0</b></div>
+        <div>Mapas copiados <b id="statMapsCopied">0</b></div>
+        <div>Error mejor <b id="statBestError">–</b></div>
+        <div>Error odometría <b id="statOdometryError">–</b></div>
+        <div>Mapa/partícula <b id="statMapSize">–</b></div>
+        <div>Total mapas <b id="statTotalMaps">–</b></div>
+      </div>
+      <canvas id="neffCanvas" width="480" height="140" aria-label="Historia de Neff / N"></canvas>
+      <small class="legend">Neff/N por paso; línea discontinua = umbral N/2; marcas = remuestreo</small>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Mapas de todas las partículas <span>pulsa uno para verlo en grande</span></h2>
+    <div class="thumbs" id="thumbnails"></div>
+  </section>
+
+  <section class="panel notes">
+    <div>
+      <h2>Qué se está simulando</h2>
+      <ul>
+        <li>Planta de 16 × 12 m con un bloque central; la ruta da una vuelta completa (unos 240 pasos de 25 cm o 10°).</li>
+        <li>Láser de 360° con 72 haces, alcance 5 m y ruido de 3 cm.</li>
+        <li>La odometría real gira un 5 % de más, así que la estimación solo con odometría acumula unos 15° al dar la vuelta.</li>
+        <li>Cada partícula: muestrea el modelo de movimiento, se pondera con el modelo de punto final sobre <em>su</em> mapa anterior y luego actualiza su mapa con log-odds (+0,9 ocupado, −0,4 libre).</li>
+        <li>Se remuestrea (baja varianza) cuando Neff &lt; N/2. Las copias de una misma madre comparten trayectoria; la última se queda con el mapa original y las demás lo copian.</li>
+        <li>El número de una partícula es solo su casilla en el vector: tras remuestrear, la casilla #0 guarda una copia de otra. Si eliges una partícula a mano, la demo sigue su linaje (pasa a una de sus hijas) y avisa cuando ese linaje desaparece.</li>
+        <li>Retroceder no guarda copias de los mapas: rehace la simulación desde el principio con la misma semilla y las mismas órdenes.</li>
+        <li>La pausa de cierre usa la verdad del simulador: salta cuando al menos un 12 % de los impactos cae en zona que nadie veía desde hacía más de 40 pasos.</li>
+      </ul>
+    </div>
+    <div>
+      <h2>Memoria</h2>
+      <p id="memoryText"></p>
+      <p>La verosimilitud está suavizada (exponente 0,1) para que el filtro no colapse en cada paso; sin ese suavizado, 72 haces bastan para que una sola partícula se lleve casi todo el peso.</p>
+      <p>Teclado: <kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> mover, <kbd>Espacio</kbd> recorrer/pausar, <kbd>Intro</kbd> paso o aplicar escaneo, <kbd>Retroceso</kbd> deshacer un paso.</p>
+    </div>
+  </section>
+</div>
+
+<script type="module" src="js/ui/main.js"></script>
+</body>
+</html>
