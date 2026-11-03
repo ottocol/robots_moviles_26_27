@@ -88,10 +88,10 @@ n, lab, stats, _ = cv2.connectedComponentsWithStats(occ, connectivity=8)
 small = stats[:, cv2.CC_STAT_AREA] < min_area
 small[0] = False                               # el fondo no
 img[small[lab]] = 254                          # pasa a libre
-cv2.imwrite(sys.argv[1], img)
+cv2.imwrite(sys.argv[2], img)
 ```
 
-Puedes ejecutarlo con `python3 limpiarMapa.py nombre_mapa.pgm`. 
+Puedes ejecutarlo con `python3 limpiarMapa.py nombre_mapa.pgm nombre_mapa.pgm`. Ponemos 2 veces el nombre para que guarde el resultado en el mismo archivo y sobreescriba el original.
 
 
 ## Localización
