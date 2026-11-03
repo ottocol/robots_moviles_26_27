@@ -1,0 +1,97 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 790" width="1600" height="790">
+<defs><marker id="arrE" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#444444"/></marker><marker id="arrS" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#444444"/></marker></defs>
+<rect width="1600" height="790" fill="#FFFFFF"/>
+<rect x="40" y="170" width="740" height="350" rx="14" fill="#F5FAFF" stroke="#2F6FB3" stroke-width="1.5"/>
+<text x="58" y="196" font-family="Avenir Next, Avenir, Helvetica Neue, Helvetica, Arial, sans-serif" font-size="18" font-weight="700" fill="#2F6FB3">Navegación global</text>
+<rect x="830" y="170" width="360" height="350" rx="14" fill="#FFF9F2" stroke="#C9761E" stroke-width="1.5"/>
+<text x="848" y="196" font-family="Avenir Next, Avenir, Helvetica Neue, Helvetica, Arial, sans-serif" font-size="18" font-weight="700" fill="#C9761E">Navegación local</text>
+<rect x="1240" y="170" width="320" height="380" rx="14" fill="#FAFAFA" stroke="#8A8A8A" stroke-width="1.5"/>
+<text x="1258" y="196" font-family="Avenir Next, Avenir, Helvetica Neue, Helvetica, Arial, sans-serif" font-size="18" font-weight="700" fill="#8A8A8A">Salida a la base</text>
+<rect x="40" y="600" width="1150" height="165" rx="14" fill="#FAFAFA" stroke="#8A8A8A" stroke-width="1.5"/>
+<text x="58" y="626" font-family="Avenir Next, Avenir, Helvetica Neue, Helvetica, Arial, sans-serif" font-size="18" font-weight="700" fill="#8A8A8A">Percepción y estado</text>
+<path d="M300,70 L668,70" fill="none" stroke="#444444" stroke-width="2" marker-end="url(#arrE)"/>
+<path d="M932,70 L1188,70" fill="none" stroke="#444444" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#arrE)"/>
+<rect x="1003.0" y="39.5" width="113.9" height="21.0" rx="4" fill="#FFFFFF" opacity="0.92"/>
+<text x="1060" y="50" text-anchor="middle" dominant-baseline="central" font-family="Menlo, Consolas, monospace" font-size="14" fill="#333333">si algo falla</text>
+<path d="M700,108 C700,160 200,150 200,228" fill="none" stroke="#444444" stroke-width="2" marker-start="url(#arrS)" marker-end="url(#arrE)"/>
+<rect x="257.4" y="139.5" width="145.3" height="21.0" rx="4" fill="#FFFFFF" opacity="0.92"/>
+<text x="330" y="150" text-anchor="middle" dominant-baseline="central" font-family="Menlo, Consolas, monospace" font-size="14" fill="#333333">ComputePathToPose</text>
+<path d="M760,108 C760,170 450,160 450,228" fill="none" stroke="#444444" stroke-width="2" marker-start="url(#arrS)" marker-end="url(#arrE)"/>
+<rect x="514.8" y="181.5" width="90.4" height="21.0" rx="4" fill="#FFFFFF" opacity="0.92"/>
+<text x="560" y="192" text-anchor="middle" dominant-baseline="central" font-family="Menlo, Consolas, monospace" font-size="14" fill="#333333">SmoothPath</text>
+<path d="M800,108 L800,140 C800,180 672,180 672,226" fill="none" stroke="#444444" stroke-width="2" stroke-dasharray="6 5" marker-start="url(#arrS)" marker-end="url(#arrE)"/>
+<rect x="707.0" y="194.5" width="106.1" height="21.0" rx="4" fill="#FFFFFF" opacity="0.92"/>
+<text x="760" y="205" text-anchor="middle" dominant-baseline="central" font-family="Menlo, Consolas, monospace" font-size="14" fill="#333333">ComputeRoute</text>
+<path d="M900,102 C900,150 1080,150 1080,228" fill="none" stroke="#444444" stroke-width="2" marker-end="url(#arrE)"/>
+<rect x="994.8" y="129.5" width="90.4" height="21.0" rx="4" fill="#FFFFFF" opacity="0.92"/>
+<text x="1040" y="140" text-anchor="middle" dominant-baseline="central" font-family="Menlo, Consolas, monospace" font-size="14" fill="#333333">FollowPath</text>
+<path d="M200,290 L200,382" fill="none" stroke="#444444" stroke-width="2"/>
+<path d="M1010,290 L1010,382" fill="none" stroke="#444444" stroke-width="2"/>
+<path d="M200,660 L200,474" fill="none" stroke="#444444" stroke-width="2" marker-end="url(#arrE)"/>
+<rect x="178.3" y="549.5" width="43.4" height="21.0" rx="4" fill="#FFFFFF" opacity="0.92"/>
+<text x="200" y="560" text-anchor="middle" dominant-baseline="central" font-family="Menlo, Consolas, monospace" font-size="14" fill="#333333">/map</text>
+<path d="M470,655 C470,560 240,560 240,476" fill="none" stroke="#444444" stroke-width="2" marker-end="url(#arrE)"/>
+<path d="M530,655 C530,560 980,560 980,476" fill="none" stroke="#444444" stroke-width="2" marker-end="url(#arrE)"/>
+<path d="M1592,357 L1522,357" fill="none" stroke="#444444" stroke-width="2" marker-end="url(#arrE)"/>
+<rect x="457.6" y="600.2" width="48.4" height="19.5" rx="4" fill="#FFFFFF" opacity="0.92"/>
+<text x="500" y="610" text-anchor="end" dominant-baseline="central" font-family="Menlo, Consolas, monospace" font-size="13" fill="#333333">/scan</text>
+<rect x="1531.8" y="326.2" width="48.4" height="19.5" rx="4" fill="#FFFFFF" opacity="0.92"/>
+<text x="1556" y="336" text-anchor="middle" dominant-baseline="central" font-family="Menlo, Consolas, monospace" font-size="13" fill="#333333">/scan</text>
+<path d="M800,645 C800,540 270,520 268,466" fill="none" stroke="#444444" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#arrE)"/>
+<rect x="546.7" y="517.2" width="26.6" height="19.5" rx="4" fill="#FFFFFF" opacity="0.92"/>
+<text x="560" y="527" text-anchor="middle" dominant-baseline="central" font-family="Menlo, Consolas, monospace" font-size="13" fill="#333333">TF</text>
+<path d="M930,645 C930,560 1045,540 1045,476" fill="none" stroke="#444444" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#arrE)"/>
+<rect x="986.7" y="538.2" width="26.6" height="19.5" rx="4" fill="#FFFFFF" opacity="0.92"/>
+<text x="1000" y="548" text-anchor="middle" dominant-baseline="central" font-family="Menlo, Consolas, monospace" font-size="13" fill="#333333">TF</text>
+<path d="M1130,245 L1278,245" fill="none" stroke="#444444" stroke-width="2" marker-end="url(#arrE)"/>
+<rect x="1155.3" y="215.2" width="99.4" height="19.5" rx="4" fill="#FFFFFF" opacity="0.92"/>
+<text x="1205" y="225" text-anchor="middle" dominant-baseline="central" font-family="Menlo, Consolas, monospace" font-size="13" fill="#333333">/cmd_vel_nav</text>
+<path d="M1400,275 L1400,326" fill="none" stroke="#444444" stroke-width="2" marker-end="url(#arrE)"/>
+<rect x="1332.1" y="291.2" width="135.8" height="19.5" rx="4" fill="#FFFFFF" opacity="0.92"/>
+<text x="1400" y="301" text-anchor="middle" dominant-baseline="central" font-family="Menlo, Consolas, monospace" font-size="13" fill="#333333">/cmd_vel_smoothed</text>
+<path d="M1400,386 L1400,437" fill="none" stroke="#444444" stroke-width="2" marker-end="url(#arrE)"/>
+<rect x="1364.9" y="402.2" width="70.2" height="19.5" rx="4" fill="#FFFFFF" opacity="0.92"/>
+<text x="1400" y="412" text-anchor="middle" dominant-baseline="central" font-family="Menlo, Consolas, monospace" font-size="13" fill="#333333">/cmd_vel</text>
+<path d="M1400,497 L1400,690 L1032,690" fill="none" stroke="#444444" stroke-width="2" marker-end="url(#arrE)"/>
+<rect x="1375.8" y="600.2" width="48.4" height="19.5" rx="4" fill="#FFFFFF" opacity="0.92"/>
+<text x="1400" y="610" text-anchor="middle" dominant-baseline="central" font-family="Menlo, Consolas, monospace" font-size="13" fill="#333333">/odom</text>
+<rect x="100" y="40" width="200" height="60" rx="30.0" fill="#FFFFFF" stroke="#8A8A8A" stroke-width="2"/>
+<text x="200.0" y="59.4" text-anchor="middle" dominant-baseline="central" font-family="Avenir Next, Avenir, Helvetica Neue, Helvetica, Arial, sans-serif" font-size="17" font-weight="600" fill="#1F1F1F">Objetivo</text>
+<text x="200.0" y="80.6" text-anchor="middle" dominant-baseline="central" font-family="Avenir Next, Avenir, Helvetica Neue, Helvetica, Arial, sans-serif" font-size="15" font-weight="normal" fill="#1F1F1F">(pose destino)</text>
+<rect x="670" y="40" width="260" height="60" rx="8" fill="#F4F4F4" stroke="#8A8A8A" stroke-width="2"/>
+<text x="800.0" y="59.4" text-anchor="middle" dominant-baseline="central" font-family="Avenir Next, Avenir, Helvetica Neue, Helvetica, Arial, sans-serif" font-size="17" font-weight="600" fill="#1F1F1F">bt_navigator</text>
+<text x="800.0" y="80.6" text-anchor="middle" dominant-baseline="central" font-family="Avenir Next, Avenir, Helvetica Neue, Helvetica, Arial, sans-serif" font-size="15" font-weight="normal" fill="#1F1F1F">(behavior tree)</text>
+<rect x="1190" y="35" width="300" height="70" rx="8" fill="#F4F4F4" stroke="#8A8A8A" stroke-width="2" stroke-dasharray="7 5"/>
+<text x="1340.0" y="59.4" text-anchor="middle" dominant-baseline="central" font-family="Avenir Next, Avenir, Helvetica Neue, Helvetica, Arial, sans-serif" font-size="17" font-weight="600" fill="#1F1F1F">behavior_server</text>
+<text x="1340.0" y="80.6" text-anchor="middle" dominant-baseline="central" font-family="Avenir Next, Avenir, Helvetica Neue, Helvetica, Arial, sans-serif" font-size="15" font-weight="normal" fill="#1F1F1F">recuperación: spin, backup, wait</text>
+<rect x="90" y="230" width="220" height="60" rx="8" fill="#E6F1FB" stroke="#2F6FB3" stroke-width="2"/>
+<text x="200.0" y="260.0" text-anchor="middle" dominant-baseline="central" font-family="Avenir Next, Avenir, Helvetica Neue, Helvetica, Arial, sans-serif" font-size="17" font-weight="600" fill="#1F1F1F">planner_server</text>
+<rect x="345" y="230" width="210" height="60" rx="8" fill="#E6F1FB" stroke="#2F6FB3" stroke-width="2"/>
+<text x="450.0" y="260.0" text-anchor="middle" dominant-baseline="central" font-family="Avenir Next, Avenir, Helvetica Neue, Helvetica, Arial, sans-serif" font-size="17" font-weight="600" fill="#1F1F1F">smoother_server</text>
+<rect x="590" y="228" width="165" height="70" rx="8" fill="#E6F1FB" stroke="#2F6FB3" stroke-width="2" stroke-dasharray="7 5"/>
+<text x="672.5" y="252.4" text-anchor="middle" dominant-baseline="central" font-family="Avenir Next, Avenir, Helvetica Neue, Helvetica, Arial, sans-serif" font-size="17" font-weight="600" fill="#1F1F1F">route_server</text>
+<text x="672.5" y="273.6" text-anchor="middle" dominant-baseline="central" font-family="Avenir Next, Avenir, Helvetica Neue, Helvetica, Arial, sans-serif" font-size="15" font-weight="normal" fill="#1F1F1F">(opcional)</text>
+<path d="M115.0,395 L115.0,463 A85.0,11 0 0 0 285.0,463 L285.0,395" fill="#E6F1FB" stroke="#2F6FB3" stroke-width="2"/>
+<ellipse cx="200" cy="395" rx="85.0" ry="11" fill="#E6F1FB" stroke="#2F6FB3" stroke-width="2"/>
+<text x="200" y="435.0" text-anchor="middle" dominant-baseline="central" font-family="Avenir Next, Avenir, Helvetica Neue, Helvetica, Arial, sans-serif" font-size="16" font-weight="600" fill="#1F1F1F">global_costmap</text>
+<rect x="890" y="230" width="240" height="60" rx="8" fill="#FDF0E3" stroke="#C9761E" stroke-width="2"/>
+<text x="1010.0" y="260.0" text-anchor="middle" dominant-baseline="central" font-family="Avenir Next, Avenir, Helvetica Neue, Helvetica, Arial, sans-serif" font-size="17" font-weight="600" fill="#1F1F1F">controller_server</text>
+<path d="M925.0,395 L925.0,463 A85.0,11 0 0 0 1095.0,463 L1095.0,395" fill="#FDF0E3" stroke="#C9761E" stroke-width="2"/>
+<ellipse cx="1010" cy="395" rx="85.0" ry="11" fill="#FDF0E3" stroke="#C9761E" stroke-width="2"/>
+<text x="1010" y="435.0" text-anchor="middle" dominant-baseline="central" font-family="Avenir Next, Avenir, Helvetica Neue, Helvetica, Arial, sans-serif" font-size="16" font-weight="600" fill="#1F1F1F">local_costmap</text>
+<rect x="1280" y="215" width="240" height="60" rx="8" fill="#F4F4F4" stroke="#8A8A8A" stroke-width="2"/>
+<text x="1400.0" y="245.0" text-anchor="middle" dominant-baseline="central" font-family="Avenir Next, Avenir, Helvetica Neue, Helvetica, Arial, sans-serif" font-size="17" font-weight="600" fill="#1F1F1F">velocity_smoother</text>
+<rect x="1280" y="327" width="240" height="60" rx="8" fill="#F4F4F4" stroke="#8A8A8A" stroke-width="2"/>
+<text x="1400.0" y="357.0" text-anchor="middle" dominant-baseline="central" font-family="Avenir Next, Avenir, Helvetica Neue, Helvetica, Arial, sans-serif" font-size="17" font-weight="600" fill="#1F1F1F">collision_monitor</text>
+<rect x="1280" y="438" width="240" height="60" rx="8" fill="#F4F4F4" stroke="#8A8A8A" stroke-width="2"/>
+<text x="1400.0" y="468.0" text-anchor="middle" dominant-baseline="central" font-family="Avenir Next, Avenir, Helvetica Neue, Helvetica, Arial, sans-serif" font-size="17" font-weight="600" fill="#1F1F1F">Base del robot</text>
+<rect x="100" y="660" width="200" height="60" rx="8" fill="#F4F4F4" stroke="#8A8A8A" stroke-width="2"/>
+<text x="200.0" y="690.0" text-anchor="middle" dominant-baseline="central" font-family="Avenir Next, Avenir, Helvetica Neue, Helvetica, Arial, sans-serif" font-size="17" font-weight="600" fill="#1F1F1F">map_server</text>
+<rect x="400" y="655" width="220" height="70" rx="8" fill="#F4F4F4" stroke="#8A8A8A" stroke-width="2"/>
+<text x="510.0" y="679.4" text-anchor="middle" dominant-baseline="central" font-family="Avenir Next, Avenir, Helvetica Neue, Helvetica, Arial, sans-serif" font-size="17" font-weight="600" fill="#1F1F1F">Sensores</text>
+<text x="510.0" y="700.6" text-anchor="middle" dominant-baseline="central" font-family="Avenir Next, Avenir, Helvetica Neue, Helvetica, Arial, sans-serif" font-size="15" font-weight="normal" fill="#1F1F1F">/scan · depth</text>
+<rect x="740" y="645" width="290" height="90" rx="8" fill="#F4F4F4" stroke="#8A8A8A" stroke-width="2"/>
+<text x="885.0" y="668.8" text-anchor="middle" dominant-baseline="central" font-family="Avenir Next, Avenir, Helvetica Neue, Helvetica, Arial, sans-serif" font-size="17" font-weight="600" fill="#1F1F1F">Localización (TF)</text>
+<text x="885.0" y="690.0" text-anchor="middle" dominant-baseline="central" font-family="Avenir Next, Avenir, Helvetica Neue, Helvetica, Arial, sans-serif" font-size="15" font-weight="normal" fill="#1F1F1F">AMCL: map → odom</text>
+<text x="885.0" y="711.2" text-anchor="middle" dominant-baseline="central" font-family="Avenir Next, Avenir, Helvetica Neue, Helvetica, Arial, sans-serif" font-size="15" font-weight="normal" fill="#1F1F1F">EKF: odom → base_link</text>
+</svg>

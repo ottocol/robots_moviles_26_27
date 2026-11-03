@@ -1,0 +1,1199 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+<title>Demo RRT</title>
+<style>
+:root {
+  --bg: #f4f5f8;
+  --card: #ffffff;
+  --text: #1f2330;
+  --muted: #5b6170;
+  --accent: #7b2ff7;
+  --border: #dde0e7;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: "Avenir Next", Avenir, system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+header { padding: 14px 24px 2px; }
+
+h1 {
+  margin: 0;
+  font-size: 1.55rem;
+  background: linear-gradient(90deg, #4f6df5, #a43ff0, #e01bd2);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  width: fit-content;
+}
+
+header p { margin: 4px 0 0; color: var(--muted); }
+
+main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 330px;
+  gap: 16px;
+  padding: 12px 24px 24px;
+  align-items: start;
+}
+
+.stage {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+}
+
+canvas {
+  display: block;
+  width: 100%;
+  aspect-ratio: 960 / 600;
+  border-radius: 8px;
+  touch-action: none;
+  cursor: crosshair;
+}
+
+.message {
+  min-height: 3.2em;
+  margin: 10px 2px 0;
+  font-size: 1.05rem;
+  line-height: 1.45;
+}
+
+.hint { margin: 6px 2px 0; color: var(--muted); font-size: .85rem; }
+
+.panel {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.group { display: flex; flex-direction: column; gap: 10px; }
+.group + .group { border-top: 1px solid var(--border); padding-top: 12px; }
+
+select, button { font: inherit; }
+
+select {
+  width: 100%;
+  margin-top: 4px;
+  padding: 6px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: #fff;
+}
+
+.slider {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 8px;
+  font-size: .92rem;
+}
+.slider input { grid-column: 1 / -1; width: 100%; accent-color: var(--accent); }
+.slider output { font-variant-numeric: tabular-nums; color: var(--muted); }
+
+.buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+button {
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: #f7f7fa;
+  color: var(--text);
+  cursor: pointer;
+}
+button:hover { background: #ececf4; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.primary:hover { background: #6a22e0; }
+button:disabled { opacity: .45; cursor: default; }
+
+.checks label { display: flex; gap: 8px; align-items: center; font-size: .92rem; }
+.checks input { accent-color: var(--accent); }
+
+.stats {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 10px;
+  margin: 0;
+  font-size: .88rem;
+}
+.stats dt { color: var(--muted); }
+.stats dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+
+.legend { font-size: .82rem; color: var(--muted); }
+.legend .bar { height: 10px; border-radius: 5px; margin: 4px 0 2px; }
+.legend .ends { display: flex; justify-content: space-between; }
+
+.note { font-size: .84rem; color: var(--muted); line-height: 1.4; margin: 0; }
+
+@media (max-width: 900px) {
+  main { grid-template-columns: 1fr; padding: 10px 16px 20px; }
+  header { padding: 12px 16px 0; }
+}
+
+[hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Rapidly-Exploring Random Tree (RRT)</h1>
+  <p>El árbol crece hacia el espacio sin explorar. Robot circular en (x, y) o robot rectangular en (x, y, θ).</p>
+</header>
+<main>
+  <section class="stage">
+    <canvas id="canvas" aria-label="Mapa con el árbol del RRT"></canvas>
+    <p id="message" class="message"></p>
+    <p class="hint">Arrastra el inicio o el objetivo (con el robot rectangular, la rueda del ratón los gira). Arrastra en una zona vacía para añadir un obstáculo; clic en un obstáculo para borrarlo.</p>
+  </section>
+  <aside class="panel">
+    <div class="group">
+      <label>Robot
+        <select id="mode">
+          <option value="point">Circular · CSpace (x, y)</option>
+          <option value="se2">Rectangular · CSpace (x, y, θ)</option>
+        </select>
+      </label>
+      <label>Mapa <select id="map"></select></label>
+      <p id="noteSe2" class="note" hidden>Plataforma omnidireccional de 84 × 28 px (puede trasladarse y girar a la vez). Una muestra es una pose completa (x, y, θ): no hay rejilla que construir, solo comprobar colisiones.</p>
+    </div>
+    <div class="group">
+      <label class="slider">Δq (incremento) <output id="stepOut"></output><input id="step" type="range" min="5" max="80" value="25"></label>
+      <label class="slider">Sesgo al objetivo <output id="biasOut"></output><input id="bias" type="range" min="0" max="30" value="5"></label>
+      <label class="slider" id="rowRadius">Radio del robot <output id="rOut"></output><input id="radius" type="range" min="2" max="20" value="6"></label>
+      <label class="slider">Velocidad <output id="speedOut"></output><input id="speed" type="range" min="0" max="6" value="3"></label>
+    </div>
+    <div class="group buttons">
+      <button id="btnStep">Paso</button>
+      <button id="btnPlay" class="primary">▶ Reproducir</button>
+      <button id="btnEnd">Hasta el final</button>
+      <button id="btnReset">Reiniciar</button>
+      <button id="btnShortcut">Recortar atajos</button>
+      <button id="btnAnimate">Animar robot</button>
+      <button id="btnSeed">Semilla <span id="seedOut"></span></button>
+    </div>
+    <div class="group checks">
+      <label id="rowVor"><input type="checkbox" id="chkVor" checked> Regiones de Voronoi del árbol</label>
+      <div id="legendVor" class="legend">
+        <div class="bar" style="background: linear-gradient(90deg, #fff7e8, #ea6a14)"></div>
+        <div class="ends"><span>región pequeña</span><span>grande: más probable expandir</span></div>
+      </div>
+      <label><input type="checkbox" id="chkMarkers" checked> Marcar q_rand, q_near, q_new</label>
+      <label id="rowInflate"><input type="checkbox" id="chkInflate" checked> Mostrar dilatación de obstáculos</label>
+      <label id="rowCirc" hidden><input type="checkbox" id="chkCirc"> Dilatar con el radio circunscrito (aproximar el robot por un círculo)</label>
+    </div>
+    <div class="group">
+      <dl id="stats" class="stats"></dl>
+    </div>
+  </aside>
+</main>
+<script>
+(() => {
+'use strict';
+// ===== rng.js =====
+// Generador pseudoaleatorio con semilla (mulberry32): la misma semilla da
+// siempre el mismo resultado, útil para repetir un caso en clase.
+function makeRng(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// ===== geometry.js =====
+// Geometría y comprobación de colisiones.
+// El mundo mide WORLD_W x WORLD_H unidades (1 unidad = 1 píxel del lienzo).
+// Los obstáculos son rectángulos alineados con los ejes {x, y, w, h}.
+
+const WORLD_W = 960;
+const WORLD_H = 600;
+
+// Distancia de un punto a un rectángulo (0 si está dentro)
+function pointRectDist(px, py, r) {
+  const dx = Math.max(r.x - px, 0, px - (r.x + r.w));
+  const dy = Math.max(r.y - py, 0, py - (r.y + r.h));
+  return Math.hypot(dx, dy);
+}
+
+// Índice del obstáculo que contiene el punto, o -1
+function hitObstacle(px, py, obstacles) {
+  for (let i = obstacles.length - 1; i >= 0; i--) {
+    const o = obstacles[i];
+    if (px >= o.x && px <= o.x + o.w && py >= o.y && py <= o.y + o.h) return i;
+  }
+  return -1;
+}
+
+// ---------- Robot circular (CSpace 2D) ----------
+// Comprobar un robot de radio r equivale a comprobar un punto contra los
+// obstáculos dilatados r (suma de Minkowski).
+function pointFree(px, py, radius, obstacles, counter) {
+  if (counter) counter.checks++;
+  if (px < radius || py < radius || px > WORLD_W - radius || py > WORLD_H - radius) return false;
+  for (const o of obstacles) {
+    if (pointRectDist(px, py, o) < radius) return false;
+  }
+  return true;
+}
+
+// Un segmento es libre si lo son todos sus puntos, muestreados cada `step`
+function segmentFree(ax, ay, bx, by, radius, obstacles, counter, step = 3) {
+  const n = Math.max(1, Math.ceil(Math.hypot(bx - ax, by - ay) / step));
+  for (let i = 0; i <= n; i++) {
+    const t = i / n;
+    if (!pointFree(ax + (bx - ax) * t, ay + (by - ay) * t, radius, obstacles, counter)) return false;
+  }
+  return true;
+}
+
+// ---------- Robot rectangular (CSpace 3D: x, y, θ) ----------
+
+// Diferencia angular b - a en (-π, π]
+function angDiff(a, b) {
+  let d = b - a;
+  while (d > Math.PI) d -= 2 * Math.PI;
+  while (d <= -Math.PI) d += 2 * Math.PI;
+  return d;
+}
+
+// Esquinas del rectángulo L x W centrado en (x, y) y girado θ
+function obbCorners(x, y, th, L, W) {
+  const c = Math.cos(th), s = Math.sin(th), hl = L / 2, hw = W / 2;
+  return [
+    [x + c * hl - s * hw, y + s * hl + c * hw],
+    [x - c * hl - s * hw, y - s * hl + c * hw],
+    [x - c * hl + s * hw, y - s * hl - c * hw],
+    [x + c * hl + s * hw, y + s * hl - c * hw],
+  ];
+}
+
+function projectRange(points, ax, ay) {
+  let mn = Infinity, mx = -Infinity;
+  for (const p of points) {
+    const v = p[0] * ax + p[1] * ay;
+    if (v < mn) mn = v;
+    if (v > mx) mx = v;
+  }
+  return [mn, mx];
+}
+
+// Teorema del eje separador entre el rectángulo girado y uno alineado
+function obbHitsRect(corners, r) {
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const [px, py] of corners) {
+    if (px < minX) minX = px;
+    if (px > maxX) maxX = px;
+    if (py < minY) minY = py;
+    if (py > maxY) maxY = py;
+  }
+  if (maxX <= r.x || minX >= r.x + r.w || maxY <= r.y || minY >= r.y + r.h) return false;
+  const rc = [[r.x, r.y], [r.x + r.w, r.y], [r.x + r.w, r.y + r.h], [r.x, r.y + r.h]];
+  for (let k = 0; k < 2; k++) {
+    const ax = corners[k + 1][0] - corners[k][0];
+    const ay = corners[k + 1][1] - corners[k][1];
+    const [a0, a1] = projectRange(corners, ax, ay);
+    const [b0, b1] = projectRange(rc, ax, ay);
+    if (a1 <= b0 || b1 <= a0) return false;
+  }
+  return true;
+}
+
+function poseFree(x, y, th, robot, obstacles, counter) {
+  if (counter) counter.checks++;
+  const cs = obbCorners(x, y, th, robot.L, robot.W);
+  for (const [px, py] of cs) {
+    if (px < 0 || py < 0 || px > WORLD_W || py > WORLD_H) return false;
+  }
+  for (const o of obstacles) {
+    if (obbHitsRect(cs, o)) return false;
+  }
+  return true;
+}
+
+// Métrica en (x, y, θ): el ángulo se pondera con wTh (unidades de longitud por radián)
+function se2Dist(a, b, wTh) {
+  return Math.hypot(b.x - a.x, b.y - a.y, wTh * angDiff(a.th, b.th));
+}
+
+// Tramo libre en (x, y, θ): interpolación lineal comprobando poses intermedias.
+// El paso se elige para que ninguna esquina avance más de `step` entre comprobaciones.
+function se2EdgeFree(a, b, robot, obstacles, counter, step = 3) {
+  const dth = angDiff(a.th, b.th);
+  const trans = Math.hypot(b.x - a.x, b.y - a.y);
+  const sweep = Math.abs(dth) * Math.hypot(robot.L, robot.W) / 2;
+  const n = Math.max(1, Math.ceil((trans + sweep) / step));
+  for (let i = 0; i <= n; i++) {
+    const t = i / n;
+    if (!poseFree(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, a.th + dth * t, robot, obstacles, counter)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+// ===== maps.js =====
+// Mapas predefinidos. Coordenadas en un mundo de 960 x 600.
+
+const T = 16; // grosor de pared
+
+function rooms() {
+  return {
+    obstacles: [
+      { x: 320, y: 0, w: T, h: 130 }, { x: 320, y: 200, w: T, h: 400 },
+      { x: 640, y: 0, w: T, h: 380 }, { x: 640, y: 450, w: T, h: 150 },
+      { x: 0, y: 300, w: 230, h: T },
+      { x: 656, y: 260, w: 144, h: T }, { x: 880, y: 260, w: 80, h: T },
+      { x: 110, y: 420, w: 100, h: 60 }, { x: 430, y: 210, w: 110, h: 150 },
+      { x: 760, y: 410, w: 130, h: 50 },
+    ],
+    start: { x: 70, y: 70, th: 0 },
+    goal: { x: 900, y: 540, th: 0 },
+  };
+}
+
+function narrow() {
+  return {
+    obstacles: [
+      // pasillo de 120 de largo y 40 de ancho
+      { x: 420, y: 0, w: 120, h: 280 }, { x: 420, y: 320, w: 120, h: 280 },
+      { x: 160, y: 120, w: 120, h: 40 }, { x: 190, y: 400, w: 60, h: 110 },
+      { x: 700, y: 90, w: 90, h: 150 }, { x: 650, y: 400, w: 180, h: 40 },
+    ],
+    start: { x: 100, y: 470, th: 0 },
+    goal: { x: 860, y: 130, th: 0 },
+  };
+}
+
+function forest() {
+  const rng = makeRng(11);
+  const start = { x: 80, y: 520, th: 0 }, goal = { x: 880, y: 80, th: 0 };
+  const obstacles = [];
+  while (obstacles.length < 38) {
+    const w = 25 + rng() * 45, h = 25 + rng() * 45;
+    const x = rng() * (960 - w), y = rng() * (600 - h);
+    const cx = x + w / 2, cy = y + h / 2;
+    if (Math.hypot(cx - start.x, cy - start.y) < 90 || Math.hypot(cx - goal.x, cy - goal.y) < 90) continue;
+    obstacles.push({ x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h) });
+  }
+  return { obstacles, start, goal };
+}
+
+// Mapas pensados para el robot rectangular de 84 x 28
+function door() {
+  return {
+    obstacles: [
+      { x: 470, y: 0, w: 30, h: 270 }, { x: 470, y: 330, w: 30, h: 270 },
+      { x: 200, y: 130, w: 130, h: 60 }, { x: 650, y: 340, w: 60, h: 190 },
+    ],
+    start: { x: 170, y: 440, th: Math.PI / 2 },
+    goal: { x: 800, y: 160, th: Math.PI / 2 },
+  };
+}
+
+function warehouse() {
+  const obstacles = [];
+  for (const y of [100, 220, 340, 460]) obstacles.push({ x: 150, y, w: 660, h: 40 });
+  return {
+    obstacles,
+    start: { x: 300, y: 180, th: 0 },
+    goal: { x: 650, y: 420, th: Math.PI },
+  };
+}
+
+const POINT_MAPS = {
+  rooms: { name: 'Habitaciones', make: rooms },
+  narrow: { name: 'Paso estrecho', make: narrow },
+  forest: { name: 'Bosque de obstáculos', make: forest },
+};
+
+const SE2_MAPS = {
+  door: { name: 'Puerta estrecha', make: door },
+  warehouse: { name: 'Almacén (dar la vuelta)', make: warehouse },
+  rooms: { name: 'Habitaciones', make: rooms },
+};
+
+// ===== rrt.js =====
+// Rapidly-exploring Random Tree en (x, y) o en (x, y, θ)
+
+class RRT {
+  constructor({ mode, obstacles, start, goal, step, goalBias, radius, robot, rng, counter }) {
+    this.mode = mode;               // 'point' | 'se2'
+    this.obstacles = obstacles;
+    this.goal = goal;
+    this.step = step;               // Δq
+    this.goalBias = goalBias;       // probabilidad de muestrear el objetivo
+    this.radius = radius;
+    this.robot = robot;
+    this.rng = rng;
+    this.counter = counter;
+    // en (x, y, θ) un radián pesa lo que avanza la esquina del robot al girarlo
+    this.wTh = mode === 'se2' ? Math.hypot(robot.L, robot.W) / 2 : 0;
+    this.nodes = [{ x: start.x, y: start.y, th: start.th || 0, parent: -1 }];
+    this.iter = 0;
+    this.rejects = 0;
+    this.done = false;
+    this.goalIdx = -1;
+  }
+
+  dist(a, b) {
+    return this.mode === 'se2' ? se2Dist(a, b, this.wTh) : Math.hypot(b.x - a.x, b.y - a.y);
+  }
+
+  poseOk(q) {
+    return this.mode === 'se2'
+      ? poseFree(q.x, q.y, q.th, this.robot, this.obstacles, this.counter)
+      : pointFree(q.x, q.y, this.radius, this.obstacles, this.counter);
+  }
+
+  edgeOk(a, b) {
+    return this.mode === 'se2'
+      ? se2EdgeFree(a, b, this.robot, this.obstacles, this.counter)
+      : segmentFree(a.x, a.y, b.x, b.y, this.radius, this.obstacles, this.counter);
+  }
+
+  // RAND_CONF: muestreo uniforme del espacio de configuraciones (con sesgo al objetivo)
+  sample() {
+    if (this.rng() < this.goalBias) return { x: this.goal.x, y: this.goal.y, th: this.goal.th || 0, biased: true };
+    return {
+      x: this.rng() * WORLD_W,
+      y: this.rng() * WORLD_H,
+      th: this.mode === 'se2' ? this.rng() * 2 * Math.PI - Math.PI : 0,
+      biased: false,
+    };
+  }
+
+  // NEAREST_VERTEX
+  nearest(q) {
+    let best = 0, bd = Infinity;
+    for (let i = 0; i < this.nodes.length; i++) {
+      const d = this.dist(this.nodes[i], q);
+      if (d < bd) { bd = d; best = i; }
+    }
+    return best;
+  }
+
+  // NEW_CONF: avanzar Δq desde q_near hacia q_rand
+  steer(a, q) {
+    const d = this.dist(a, q);
+    if (d <= this.step) return { x: q.x, y: q.y, th: q.th };
+    const t = this.step / d;
+    return { x: a.x + (q.x - a.x) * t, y: a.y + (q.y - a.y) * t, th: a.th + angDiff(a.th, q.th) * t };
+  }
+
+  // Una iteración del bucle de BuildRRT, más la comprobación de colisión y de llegada
+  stepOnce() {
+    if (this.done) return null;
+    this.iter++;
+    const qrand = this.sample();
+    const nearIdx = this.nearest(qrand);
+    const qnear = this.nodes[nearIdx];
+    const qnew = this.steer(qnear, qrand);
+    const ok = this.edgeOk(qnear, qnew);
+    const info = { qrand, nearIdx, qnew, ok, newIdx: -1, reached: false };
+    if (!ok) {
+      this.rejects++;
+      return info;
+    }
+    this.nodes.push({ ...qnew, parent: nearIdx });
+    info.newIdx = this.nodes.length - 1;
+    const g = { x: this.goal.x, y: this.goal.y, th: this.goal.th || 0 };
+    if (this.dist(qnew, g) <= this.step && this.edgeOk(qnew, g)) {
+      if (this.dist(qnew, g) > 1e-6) this.nodes.push({ ...g, parent: info.newIdx });
+      this.goalIdx = this.nodes.length - 1;
+      this.done = true;
+      info.reached = true;
+    }
+    return info;
+  }
+
+  path() {
+    if (this.goalIdx < 0) return null;
+    const out = [];
+    for (let i = this.goalIdx; i !== -1; i = this.nodes[i].parent) out.push(this.nodes[i]);
+    return out.reverse();
+  }
+
+  pathLength(path) {
+    let L = 0;
+    for (let i = 1; i < path.length; i++) L += Math.hypot(path[i].x - path[i - 1].x, path[i].y - path[i - 1].y);
+    return L;
+  }
+
+  // Recorte de atajos: unir dos poses no consecutivas si el tramo directo es libre
+  shortcut(path, rng, tries = 300) {
+    const p = path.slice();
+    for (let t = 0; t < tries && p.length > 2; t++) {
+      const i = Math.floor(rng() * (p.length - 2));
+      const j = i + 2 + Math.floor(rng() * (p.length - i - 2));
+      if (j >= p.length) continue;
+      if (this.edgeOk(p[i], p[j])) p.splice(i + 1, j - i - 1);
+    }
+    return p;
+  }
+}
+
+// ===== voronoi.js =====
+// Regiones de Voronoi de los nodos del árbol sobre una rejilla.
+// Cada celda guarda qué nodo tiene más cerca; al añadir un nodo solo se
+// actualizan las celdas que le quedan más cerca a él. El número de celdas de
+// cada nodo aproxima el área de su región, que (con muestreo uniforme) es
+// proporcional a la probabilidad de que ese nodo sea el q_near elegido.
+class VoronoiGrid {
+  constructor(width, height, cell = 4) {
+    this.cell = cell;
+    this.cols = Math.ceil(width / cell);
+    this.rows = Math.ceil(height / cell);
+    const n = this.cols * this.rows;
+    this.owner = new Int32Array(n).fill(-1);
+    this.d2 = new Float32Array(n).fill(Infinity);
+    this.area = [];
+    this.total = n;
+    this.maxArea = 0;
+    this.off = document.createElement('canvas');
+    this.off.width = this.cols;
+    this.off.height = this.rows;
+    this.offCtx = this.off.getContext('2d');
+    this.img = this.offCtx.createImageData(this.cols, this.rows);
+    this.dirty = true;
+  }
+
+  add(i, x, y) {
+    this.area[i] = 0;
+    const c = this.cell;
+    for (let r = 0, k = 0; r < this.rows; r++) {
+      const dy = (r + 0.5) * c - y;
+      for (let col = 0; col < this.cols; col++, k++) {
+        const dx = (col + 0.5) * c - x;
+        const d = dx * dx + dy * dy;
+        if (d < this.d2[k]) {
+          const o = this.owner[k];
+          if (o >= 0) this.area[o]--;
+          this.owner[k] = i;
+          this.d2[k] = d;
+          this.area[i]++;
+        }
+      }
+    }
+    this.maxArea = 0;
+    for (const a of this.area) if (a > this.maxArea) this.maxArea = a;
+    this.dirty = true;
+  }
+
+  fraction(i) { return (this.area[i] || 0) / this.total; }
+
+  // Color por área: claro = región pequeña, naranja intenso = región grande
+  paint(ctx, width, height, highlight = -1) {
+    if (this.dirty || this.lastHighlight !== highlight) {
+      const data = this.img.data;
+      const lo = [255, 247, 232], hi = [234, 106, 20];
+      const cols = this.cols;
+      for (let k = 0; k < this.owner.length; k++) {
+        const o = this.owner[k];
+        const t = o >= 0 && this.maxArea ? Math.sqrt(this.area[o] / this.maxArea) : 0;
+        let r = lo[0] + (hi[0] - lo[0]) * t;
+        let g = lo[1] + (hi[1] - lo[1]) * t;
+        let b = lo[2] + (hi[2] - lo[2]) * t;
+        // borde entre regiones
+        const right = (k + 1) % cols !== 0 ? this.owner[k + 1] : o;
+        const below = k + cols < this.owner.length ? this.owner[k + cols] : o;
+        if (right !== o || below !== o) { r *= 0.72; g *= 0.72; b *= 0.72; }
+        if (o === highlight) { r = r * 0.45 + 47 * 0.55; g = g * 0.45 + 111 * 0.55; b = b * 0.45 + 179 * 0.55; }
+        const p = k * 4;
+        data[p] = r; data[p + 1] = g; data[p + 2] = b; data[p + 3] = 255;
+      }
+      this.offCtx.putImageData(this.img, 0, 0);
+      this.dirty = false;
+      this.lastHighlight = highlight;
+    }
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(this.off, 0, 0, this.cols * this.cell, this.rows * this.cell);
+    ctx.restore();
+  }
+}
+
+// ===== render.js =====
+// Dibujo de la escena del RRT
+
+const COLORS = {
+  bg: '#fbfbfd', grid: '#eef0f5', obstacle: '#2b2d42', inflate: '#f6dfc6', circ: '#f2c4c4',
+  edge: '#6f9bd6', node: '#1f4f8a', path: '#d4148a', pathOld: '#d4148a',
+  start: '#2e9e5b', goal: '#d64545', rand: '#6b7280', near: '#2f6fb3', newOk: '#2e9e5b', bad: '#d64545',
+  robot: '#7b2ff7',
+};
+
+const FONT = '600 13px "Avenir Next", Avenir, system-ui, sans-serif';
+
+function grid(ctx) {
+  ctx.strokeStyle = COLORS.grid;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let x = 40; x < WORLD_W; x += 40) { ctx.moveTo(x + 0.5, 0); ctx.lineTo(x + 0.5, WORLD_H); }
+  for (let y = 40; y < WORLD_H; y += 40) { ctx.moveTo(0, y + 0.5); ctx.lineTo(WORLD_W, y + 0.5); }
+  ctx.stroke();
+}
+
+function inflated(ctx, obstacles, r, color) {
+  ctx.save();
+  ctx.fillStyle = color;
+  ctx.strokeStyle = color;
+  ctx.lineJoin = 'round';
+  ctx.lineWidth = 2 * r;
+  for (const o of obstacles) {
+    ctx.beginPath();
+    ctx.rect(o.x, o.y, o.w, o.h);
+    ctx.fill();
+    ctx.stroke();
+  }
+  ctx.fillRect(0, 0, WORLD_W, r);
+  ctx.fillRect(0, WORLD_H - r, WORLD_W, r);
+  ctx.fillRect(0, 0, r, WORLD_H);
+  ctx.fillRect(WORLD_W - r, 0, r, WORLD_H);
+  ctx.restore();
+}
+
+function label(ctx, text, x, y, color) {
+  ctx.font = FONT;
+  ctx.textAlign = 'center';
+  ctx.lineWidth = 3.5;
+  ctx.strokeStyle = 'rgba(255,255,255,0.92)';
+  ctx.strokeText(text, x, y);
+  ctx.fillStyle = color;
+  ctx.fillText(text, x, y);
+}
+
+function footprint(ctx, q, robot, { fill = null, stroke = '#333', dash = null, alpha = 1, lw = 1.5 } = {}) {
+  const cs = obbCorners(q.x, q.y, q.th, robot.L, robot.W);
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.beginPath();
+  cs.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+  ctx.closePath();
+  if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+  if (stroke) {
+    if (dash) ctx.setLineDash(dash);
+    ctx.strokeStyle = stroke;
+    ctx.lineWidth = lw;
+    ctx.stroke();
+  }
+  // frente del robot
+  const c = Math.cos(q.th), s = Math.sin(q.th), f = robot.L / 2;
+  ctx.beginPath();
+  ctx.moveTo(q.x + c * (f - 2), q.y + s * (f - 2));
+  ctx.lineTo(q.x + c * (f - 14) - s * 7, q.y + s * (f - 14) + c * 7);
+  ctx.lineTo(q.x + c * (f - 14) + s * 7, q.y + s * (f - 14) - c * 7);
+  ctx.closePath();
+  ctx.fillStyle = stroke || '#333';
+  ctx.fill();
+  ctx.restore();
+}
+
+function endpoint(ctx, s, q, color, text) {
+  if (s.mode === 'se2') {
+    footprint(ctx, q, s.robot, { fill: color + '55', stroke: color, lw: 2 });
+    label(ctx, text, q.x, q.y - Math.max(s.robot.L, s.robot.W) / 2 - 8, color);
+  } else {
+    ctx.fillStyle = color;
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(q.x, q.y, 8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    label(ctx, text, q.x, q.y - 14, color);
+  }
+}
+
+// interpolación de una pose a lo largo de un camino (para dibujar el robot)
+function poseAlong(path, t, angDiffFn) {
+  const segs = [];
+  let total = 0;
+  for (let i = 1; i < path.length; i++) {
+    const a = path[i - 1], b = path[i];
+    const L = Math.hypot(b.x - a.x, b.y - a.y) + Math.abs(angDiffFn(a.th, b.th)) * 20;
+    segs.push(L);
+    total += L;
+  }
+  let d = (t % 1) * total;
+  for (let i = 0; i < segs.length; i++) {
+    if (d <= segs[i] || i === segs.length - 1) {
+      const a = path[i], b = path[i + 1], u = segs[i] ? Math.min(d / segs[i], 1) : 1;
+      return { x: a.x + (b.x - a.x) * u, y: a.y + (b.y - a.y) * u, th: a.th + angDiffFn(a.th, b.th) * u };
+    }
+    d -= segs[i];
+  }
+  return path[path.length - 1];
+}
+
+function drawScene(ctx, s) {
+  ctx.fillStyle = COLORS.bg;
+  ctx.fillRect(0, 0, WORLD_W, WORLD_H);
+  const rrt = s.rrt;
+  const vorOn = s.mode === 'point' && s.show.vor && s.vor;
+  if (vorOn) s.vor.paint(ctx, WORLD_W, WORLD_H, s.show.markers && s.last ? s.last.nearIdx : -1);
+  else grid(ctx);
+
+  if (s.mode === 'se2' && s.show.circ) inflated(ctx, s.obstacles, s.circR, COLORS.circ);
+  if (s.mode === 'point' && s.show.inflate && !vorOn) inflated(ctx, s.obstacles, s.radius, COLORS.inflate);
+  ctx.fillStyle = COLORS.obstacle;
+  for (const o of s.obstacles) ctx.fillRect(o.x, o.y, o.w, o.h);
+  if (s.mode === 'se2' && s.show.circ) {
+    label(ctx, `Obstáculos dilatados con el radio circunscrito (R = ${Math.round(s.circR)} px)`, WORLD_W / 2, 22, '#9b1c1c');
+  }
+
+  if (rrt) {
+    // árbol
+    ctx.strokeStyle = COLORS.edge;
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    for (let i = 1; i < rrt.nodes.length; i++) {
+      const a = rrt.nodes[i], p = rrt.nodes[a.parent];
+      ctx.moveTo(p.x, p.y);
+      ctx.lineTo(a.x, a.y);
+    }
+    ctx.stroke();
+    if (s.mode === 'se2') {
+      // orientación de cada nodo
+      ctx.strokeStyle = COLORS.node;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      for (const n of rrt.nodes) {
+        ctx.moveTo(n.x, n.y);
+        ctx.lineTo(n.x + Math.cos(n.th) * 9, n.y + Math.sin(n.th) * 9);
+      }
+      ctx.stroke();
+    }
+    ctx.fillStyle = COLORS.node;
+    for (const n of rrt.nodes) {
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, 2.2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // camino
+  const path = s.shortPath || s.path;
+  if (s.shortPath && s.path) {
+    ctx.save();
+    ctx.strokeStyle = COLORS.pathOld;
+    ctx.globalAlpha = 0.35;
+    ctx.setLineDash([5, 4]);
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    s.path.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
+    ctx.stroke();
+    ctx.restore();
+  }
+  if (path) {
+    if (s.mode === 'se2' && !s.animating) {
+      for (let i = 0; i <= 24; i++) footprint(ctx, poseAlong(path, i / 24.0001, s.angDiff), s.robot, { stroke: COLORS.path, alpha: 0.25, lw: 1 });
+    }
+    ctx.strokeStyle = COLORS.path;
+    ctx.lineWidth = 4;
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    path.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
+    ctx.stroke();
+  }
+
+  // última iteración: q_rand, q_near, q_new
+  const L = s.last;
+  if (rrt && L && s.show.markers && !s.animating && !rrt.done) {
+    const near = rrt.nodes[L.nearIdx];
+    // etiquetas de q_near y q_new en lados opuestos para que no se solapen
+    let ux = L.qnew.x - near.x, uy = L.qnew.y - near.y;
+    const un = Math.hypot(ux, uy) || 1;
+    ux /= un; uy /= un;
+    if (un < 1e-6) { ux = 0; uy = -1; }
+    ctx.save();
+    ctx.setLineDash([5, 4]);
+    ctx.strokeStyle = COLORS.rand;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(near.x, near.y);
+    ctx.lineTo(L.qrand.x, L.qrand.y);
+    ctx.stroke();
+    ctx.restore();
+    if (s.mode === 'se2') {
+      footprint(ctx, L.qrand, s.robot, { stroke: COLORS.rand, dash: [4, 3], lw: 1.5 });
+      footprint(ctx, L.qnew, s.robot, { fill: (L.ok ? COLORS.newOk : COLORS.bad) + '33', stroke: L.ok ? COLORS.newOk : COLORS.bad, lw: 2 });
+    }
+    ctx.strokeStyle = COLORS.rand;
+    ctx.fillStyle = '#fff';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(L.qrand.x, L.qrand.y, 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    label(ctx, L.qrand.biased ? 'q_rand = objetivo' : 'q_rand', L.qrand.x, L.qrand.y - 10, '#374151');
+    ctx.strokeStyle = COLORS.near;
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.arc(near.x, near.y, 7, 0, Math.PI * 2);
+    ctx.stroke();
+    label(ctx, 'q_near', near.x - ux * 24, near.y - uy * 24 + 4, COLORS.near);
+    const c = L.ok ? COLORS.newOk : COLORS.bad;
+    ctx.fillStyle = c;
+    ctx.beginPath();
+    ctx.arc(L.qnew.x, L.qnew.y, 5, 0, Math.PI * 2);
+    ctx.fill();
+    // q_new: hacia un lado, perpendicular al tramo, para no tapar q_rand
+    label(ctx, L.ok ? 'q_new' : 'q_new (choca)', L.qnew.x - uy * 22, L.qnew.y + ux * 22 + 4, c);
+  }
+
+  endpoint(ctx, s, s.start, COLORS.start, 'Inicio');
+  endpoint(ctx, s, s.goal, COLORS.goal, 'Objetivo');
+
+  if (s.animating && path) {
+    const q = poseAlong(path, s.animT, s.angDiff);
+    if (s.mode === 'se2') footprint(ctx, q, s.robot, { fill: COLORS.robot + 'cc', stroke: COLORS.robot, lw: 2 });
+    else {
+      ctx.fillStyle = COLORS.robot;
+      ctx.beginPath();
+      ctx.arc(q.x, q.y, Math.max(s.radius, 5), 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  if (s.draft) {
+    const d = s.draft;
+    ctx.save();
+    ctx.fillStyle = 'rgba(43,45,66,0.35)';
+    ctx.strokeStyle = COLORS.obstacle;
+    ctx.setLineDash([4, 3]);
+    ctx.fillRect(d.x, d.y, d.w, d.h);
+    ctx.strokeRect(d.x, d.y, d.w, d.h);
+    ctx.restore();
+  }
+}
+
+// ===== main.js =====
+// Interfaz de la demo RRT
+
+
+
+
+
+
+const $ = (id) => document.getElementById(id);
+const canvas = $('canvas');
+const ctx = canvas.getContext('2d');
+
+// Robot rectangular omnidireccional: una plataforma que lleva una carga larga
+const ROBOT = { L: 84, W: 28 };
+const CIRC_R = Math.hypot(ROBOT.L, ROBOT.W) / 2;
+const GRID_CELL = 5, GRID_DEG = 5;
+
+const SPEED_ITERS = [0.1, 0.5, 1, 3, 10, 40, 200];
+const SPEED_NAMES = ['1 iter. cada 10 fotogramas', '1 iter. cada 2 fotogramas', '1 iter./fotograma', '3 iter./fotograma', '10 iter./fotograma', '40 iter./fotograma', '200 iter./fotograma'];
+const MAX_ITERS = 30000;
+
+const state = {
+  mode: 'point', mapId: 'rooms', obstacles: [], start: null, goal: null,
+  seed: 1, step: 25, bias: 0.05, speedIdx: 3, radius: 6,
+  robot: ROBOT, circR: CIRC_R, angDiff,
+  rrt: null, vor: null, counter: { checks: 0 },
+  running: false, acc: 0, last: null, lastFrac: 0,
+  path: null, shortPath: null, animating: false, animT: 0,
+  show: { vor: true, markers: true, circ: false, inflate: true },
+  drag: null, draft: null, invalid: '',
+};
+
+// ---------- lienzo ----------
+function setupCanvas() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width = WORLD_W * dpr;
+  canvas.height = WORLD_H * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+function toWorld(e) {
+  const r = canvas.getBoundingClientRect();
+  return { x: (e.clientX - r.left) * WORLD_W / r.width, y: (e.clientY - r.top) * WORLD_H / r.height };
+}
+
+// ---------- estado ----------
+const maps = () => (state.mode === 'se2' ? SE2_MAPS : POINT_MAPS);
+
+function loadMap(id) {
+  state.mapId = id;
+  const m = maps()[id].make();
+  state.obstacles = m.obstacles;
+  state.start = { ...m.start };
+  state.goal = { ...m.goal };
+  resetTree();
+}
+
+function configFree(q) {
+  return state.mode === 'se2'
+    ? poseFree(q.x, q.y, q.th, ROBOT, state.obstacles, null)
+    : pointFree(q.x, q.y, state.radius, state.obstacles, null);
+}
+
+function resetTree() {
+  state.counter = { checks: 0 };
+  state.rrt = new RRT({
+    mode: state.mode, obstacles: state.obstacles, start: state.start, goal: state.goal,
+    step: state.step, goalBias: state.bias, radius: state.radius, robot: ROBOT,
+    rng: makeRng(state.seed), counter: state.counter,
+  });
+  state.vor = null;
+  if (state.mode === 'point') {
+    state.vor = new VoronoiGrid(WORLD_W, WORLD_H, 4);
+    state.vor.add(0, state.start.x, state.start.y);
+  }
+  state.running = false;
+  state.acc = 0;
+  state.last = null;
+  state.path = null;
+  state.shortPath = null;
+  state.animating = false;
+  state.invalid = !configFree(state.start) ? 'start' : !configFree(state.goal) ? 'goal' : '';
+  syncButtons();
+  setMessage();
+}
+
+function iterate() {
+  const rrt = state.rrt;
+  if (!rrt || rrt.done || state.invalid) return null;
+  if (rrt.iter >= MAX_ITERS) { state.running = false; return null; }
+  const info = rrt.stepOnce();
+  // probabilidad de que q_near fuese elegido = área de su región / área total
+  state.lastFrac = state.vor ? state.vor.fraction(info.nearIdx) : 0;
+  if (state.vor && info.newIdx >= 0) {
+    state.vor.add(info.newIdx, info.qnew.x, info.qnew.y);
+    if (info.reached && rrt.goalIdx !== info.newIdx) state.vor.add(rrt.goalIdx, state.goal.x, state.goal.y);
+  }
+  state.last = info;
+  if (info.reached) {
+    state.running = false;
+    state.path = rrt.path();
+  }
+  return info;
+}
+
+// ---------- textos ----------
+const fmt = (v, d = 0) => v.toLocaleString('es-ES', { maximumFractionDigits: d, minimumFractionDigits: d });
+
+function setMessage() {
+  const rrt = state.rrt, L = state.last;
+  let t;
+  if (state.invalid) {
+    t = `El ${state.invalid === 'start' ? 'inicio' : 'objetivo'} está en colisión: muévelo${state.mode === 'se2' ? ' o gíralo con la rueda del ratón' : ''}.`;
+  } else if (rrt.done) {
+    const len = rrt.pathLength(state.shortPath || state.path);
+    t = `<b>Objetivo alcanzado</b> en ${fmt(rrt.iter)} iteraciones con ${fmt(rrt.nodes.length)} nodos (camino de ${fmt(len)} px). `
+      + (state.shortPath ? 'Tras recortar atajos el camino es más corto, pero sigue sin ser óptimo.' : 'El camino es quebrado y no es óptimo: prueba «Recortar atajos».');
+  } else if (rrt.iter >= MAX_ITERS) {
+    t = `Se ha llegado al límite de ${fmt(MAX_ITERS)} iteraciones sin alcanzar el objetivo.`;
+  } else if (!L) {
+    t = state.mode === 'se2'
+      ? '<b>Espacio de configuraciones (x, y, θ):</b> cada muestra es una pose completa del robot. Pulsa «Paso» para ver una iteración o «Reproducir».'
+      : '<b>El árbol crece desde el inicio.</b> Pulsa «Paso» para ver una iteración: muestra q_rand, busca el nodo más cercano q_near y avanza Δq hacia q_rand.';
+  } else if (L.qrand.biased) {
+    t = `q_rand <b>es el propio objetivo</b> (sesgo del ${Math.round(state.bias * 100)} %): el árbol intenta acercarse directamente a él. ${L.ok ? 'Se añade q_new.' : 'El tramo choca: se descarta.'}`;
+  } else if (state.mode === 'point' && state.show.vor) {
+    t = `q_rand ha caído en la región de Voronoi de q_near (en azul), que ocupa el <b>${fmt(state.lastFrac * 100, 1)} %</b> del mapa: esa es la probabilidad de que q_near fuese el elegido. `
+      + (L.ok ? 'Se avanza Δq y se añade q_new.' : 'El tramo q_near → q_new choca: se descarta.');
+  } else {
+    t = L.ok ? 'Se avanza Δq desde q_near hacia q_rand y se añade q_new al árbol.' : 'El tramo q_near → q_new choca con un obstáculo: se descarta y se vuelve a muestrear.';
+  }
+  $('message').innerHTML = t;
+}
+
+function updateStats() {
+  const rrt = state.rrt;
+  const path = state.shortPath || state.path;
+  const rows = [
+    ['Iteraciones', fmt(rrt.iter)],
+    ['Nodos del árbol', fmt(rrt.nodes.length)],
+    ['Extensiones descartadas', fmt(rrt.rejects)],
+    ['Comprobaciones de colisión', fmt(state.counter.checks)],
+    ['Longitud del camino', path ? `${fmt(rrt.pathLength(path))} px` : '–'],
+  ];
+  if (state.mode === 'se2') {
+    const cells = Math.ceil(WORLD_W / GRID_CELL) * Math.ceil(WORLD_H / GRID_CELL) * (360 / GRID_DEG);
+    rows.push([`Rejilla (x, y, θ) de ${GRID_CELL} px y ${GRID_DEG}°`, `${fmt(cells)} celdas`]);
+  }
+  $('stats').innerHTML = rows.map(([a, b]) => `<dt>${a}</dt><dd>${b}</dd>`).join('');
+}
+
+function syncButtons() {
+  const rrt = state.rrt;
+  const finished = rrt.done || rrt.iter >= MAX_ITERS || !!state.invalid;
+  $('btnPlay').textContent = state.running ? '⏸ Pausa' : '▶ Reproducir';
+  $('btnPlay').disabled = finished;
+  $('btnStep').disabled = finished;
+  $('btnEnd').disabled = finished;
+  $('btnShortcut').disabled = !state.path;
+  $('btnAnimate').disabled = !state.path;
+  $('btnAnimate').textContent = state.animating ? '■ Parar robot' : 'Animar robot';
+  const se2 = state.mode === 'se2';
+  $('rowVor').hidden = se2;
+  $('rowInflate').hidden = se2;
+  $('rowCirc').hidden = !se2;
+  $('rowRadius').hidden = se2;
+  $('noteSe2').hidden = !se2;
+  $('legendVor').hidden = se2 || !state.show.vor;
+}
+
+// ---------- bucle ----------
+let msgTick = 0;
+function frame() {
+  if (state.running) {
+    state.acc += SPEED_ITERS[state.speedIdx];
+    let n = Math.floor(state.acc);
+    state.acc -= n;
+    while (n-- > 0 && state.running) iterate();
+    if (!state.running) syncButtons();
+  }
+  if (state.animating) state.animT = (state.animT + 0.0025) % 1;
+  drawScene(ctx, state);
+  if (++msgTick > 5) { setMessage(); msgTick = 0; }
+  updateStats();
+  requestAnimationFrame(frame);
+}
+
+// ---------- controles ----------
+function bindSlider(id, outId, fn, label = (v) => v) {
+  const el = $(id), out = $(outId);
+  const update = (reset) => { const v = +el.value; out.textContent = label(v); fn(v, reset); };
+  el.addEventListener('input', () => update(true));
+  update(false);
+}
+
+function fillMaps() {
+  const sel = $('map');
+  sel.innerHTML = Object.entries(maps()).map(([k, m]) => `<option value="${k}">${m.name}</option>`).join('');
+  sel.value = state.mapId;
+}
+
+function initControls() {
+  $('mode').addEventListener('change', (e) => {
+    state.mode = e.target.value;
+    state.mapId = Object.keys(maps())[0];
+    fillMaps();
+    loadMap(state.mapId);
+  });
+  fillMaps();
+  $('map').addEventListener('change', (e) => loadMap(e.target.value));
+
+  bindSlider('step', 'stepOut', (v, r) => { state.step = v; if (r) resetTree(); }, (v) => `${v} px`);
+  bindSlider('bias', 'biasOut', (v, r) => { state.bias = v / 100; if (r) resetTree(); }, (v) => `${v} %`);
+  bindSlider('radius', 'rOut', (v, r) => { state.radius = v; if (r) resetTree(); }, (v) => `${v} px`);
+  bindSlider('speed', 'speedOut', (v) => { state.speedIdx = v; }, (v) => SPEED_NAMES[v]);
+
+  $('btnStep').addEventListener('click', () => { state.running = false; iterate(); syncButtons(); setMessage(); });
+  $('btnPlay').addEventListener('click', () => { state.running = !state.running; syncButtons(); });
+  $('btnEnd').addEventListener('click', () => {
+    state.running = false;
+    const t0 = performance.now();
+    while (!state.rrt.done && state.rrt.iter < MAX_ITERS && performance.now() - t0 < 4000) iterate();
+    syncButtons();
+    setMessage();
+  });
+  $('btnReset').addEventListener('click', () => resetTree());
+  $('btnSeed').addEventListener('click', () => { state.seed++; $('seedOut').textContent = `(${state.seed})`; resetTree(); });
+  $('seedOut').textContent = `(${state.seed})`;
+  $('btnShortcut').addEventListener('click', () => {
+    if (!state.path) return;
+    state.shortPath = state.rrt.shortcut(state.shortPath || state.path, makeRng(state.seed * 7919 + 1));
+    setMessage();
+  });
+  $('btnAnimate').addEventListener('click', () => { state.animating = !state.animating; state.animT = 0; syncButtons(); });
+
+  $('chkVor').addEventListener('change', (e) => { state.show.vor = e.target.checked; syncButtons(); setMessage(); });
+  $('chkMarkers').addEventListener('change', (e) => { state.show.markers = e.target.checked; });
+  $('chkCirc').addEventListener('change', (e) => { state.show.circ = e.target.checked; });
+  $('chkInflate').addEventListener('change', (e) => { state.show.inflate = e.target.checked; });
+}
+
+// ---------- ratón ----------
+function nearEnd(p) {
+  const tol = state.mode === 'se2' ? 34 : 16;
+  if (Math.hypot(p.x - state.start.x, p.y - state.start.y) < tol) return 'start';
+  if (Math.hypot(p.x - state.goal.x, p.y - state.goal.y) < tol) return 'goal';
+  return null;
+}
+
+function initPointer() {
+  canvas.addEventListener('pointerdown', (e) => {
+    const p = toWorld(e);
+    canvas.setPointerCapture(e.pointerId);
+    const end = nearEnd(p);
+    if (end) state.drag = { kind: end };
+    else {
+      const hit = hitObstacle(p.x, p.y, state.obstacles);
+      state.drag = hit >= 0 ? { kind: 'delete', index: hit, x0: p.x, y0: p.y } : { kind: 'draw', x0: p.x, y0: p.y };
+    }
+  });
+  canvas.addEventListener('pointermove', (e) => {
+    const p = toWorld(e);
+    const d = state.drag;
+    if (!d) {
+      canvas.style.cursor = nearEnd(p) ? 'grab' : hitObstacle(p.x, p.y, state.obstacles) >= 0 ? 'pointer' : 'crosshair';
+      return;
+    }
+    const cx = Math.min(Math.max(p.x, 0), WORLD_W), cy = Math.min(Math.max(p.y, 0), WORLD_H);
+    if (d.kind === 'start' || d.kind === 'goal') {
+      state[d.kind] = { ...state[d.kind], x: cx, y: cy };
+      resetTree();
+    } else if (d.kind === 'draw') {
+      state.draft = { x: Math.min(d.x0, cx), y: Math.min(d.y0, cy), w: Math.abs(cx - d.x0), h: Math.abs(cy - d.y0) };
+    } else if (d.kind === 'delete' && Math.hypot(p.x - d.x0, p.y - d.y0) > 5) {
+      d.kind = 'none';
+    }
+  });
+  const end = () => {
+    const d = state.drag;
+    state.drag = null;
+    if (!d) return;
+    if (d.kind === 'draw' && state.draft && state.draft.w >= 8 && state.draft.h >= 8) {
+      const r = state.draft;
+      state.obstacles.push({ x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.w), h: Math.round(r.h) });
+      resetTree();
+    } else if (d.kind === 'delete') {
+      state.obstacles.splice(d.index, 1);
+      resetTree();
+    }
+    state.draft = null;
+  };
+  canvas.addEventListener('pointerup', end);
+  canvas.addEventListener('pointercancel', end);
+  // en (x, y, θ), la rueda del ratón gira el inicio o el objetivo
+  canvas.addEventListener('wheel', (e) => {
+    if (state.mode !== 'se2') return;
+    const which = nearEnd(toWorld(e));
+    if (!which) return;
+    e.preventDefault();
+    state[which] = { ...state[which], th: state[which].th + Math.sign(e.deltaY) * Math.PI / 12 };
+    resetTree();
+  }, { passive: false });
+}
+
+setupCanvas();
+window.addEventListener('resize', setupCanvas);
+initControls();
+initPointer();
+loadMap(state.mapId);
+requestAnimationFrame(frame);
+
+window.rrtDemo = state;
+})();
+</script>
+</body>
+</html>

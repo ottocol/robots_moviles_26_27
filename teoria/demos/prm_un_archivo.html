@@ -1,0 +1,1137 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+<title>Demo PRM</title>
+<style>
+:root {
+  --bg: #f4f5f8;
+  --card: #ffffff;
+  --text: #1f2330;
+  --muted: #5b6170;
+  --accent: #7b2ff7;
+  --border: #dde0e7;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: "Avenir Next", Avenir, system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+header { padding: 14px 24px 2px; }
+
+h1 {
+  margin: 0;
+  font-size: 1.55rem;
+  background: linear-gradient(90deg, #4f6df5, #a43ff0, #e01bd2);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  width: fit-content;
+}
+
+header p { margin: 4px 0 0; color: var(--muted); }
+
+main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 330px;
+  gap: 16px;
+  padding: 12px 24px 24px;
+  align-items: start;
+}
+
+.stage {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+}
+
+canvas {
+  display: block;
+  width: 100%;
+  aspect-ratio: 960 / 600;
+  border-radius: 8px;
+  touch-action: none;
+  cursor: crosshair;
+}
+
+.message {
+  min-height: 3.2em;
+  margin: 10px 2px 0;
+  font-size: 1.05rem;
+  line-height: 1.45;
+}
+
+.hint { margin: 6px 2px 0; color: var(--muted); font-size: .85rem; }
+
+.panel {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.group { display: flex; flex-direction: column; gap: 10px; }
+.group + .group { border-top: 1px solid var(--border); padding-top: 12px; }
+
+select, button { font: inherit; }
+
+select {
+  width: 100%;
+  margin-top: 4px;
+  padding: 6px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: #fff;
+}
+
+.slider {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 8px;
+  font-size: .92rem;
+}
+.slider input { grid-column: 1 / -1; width: 100%; accent-color: var(--accent); }
+.slider output { font-variant-numeric: tabular-nums; color: var(--muted); }
+
+.buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+button {
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: #f7f7fa;
+  color: var(--text);
+  cursor: pointer;
+}
+button:hover { background: #ececf4; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.primary:hover { background: #6a22e0; }
+button:disabled { opacity: .45; cursor: default; }
+
+.checks label { display: flex; gap: 8px; align-items: center; font-size: .92rem; }
+.checks input { accent-color: var(--accent); }
+
+.stats {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 10px;
+  margin: 0;
+  font-size: .88rem;
+}
+.stats dt { color: var(--muted); }
+.stats dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+
+.legend { font-size: .82rem; color: var(--muted); }
+.legend .bar { height: 10px; border-radius: 5px; margin: 4px 0 2px; }
+.legend .ends { display: flex; justify-content: space-between; }
+
+.note { font-size: .84rem; color: var(--muted); line-height: 1.4; margin: 0; }
+
+@media (max-width: 900px) {
+  main { grid-template-columns: 1fr; padding: 10px 16px 20px; }
+  header { padding: 12px 16px 0; }
+}
+
+[hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Probabilistic Roadmap (PRM)</h1>
+  <p>Robot móvil circular: construcción del roadmap y consultas sobre él.</p>
+</header>
+<main>
+  <section class="stage">
+    <canvas id="canvas" aria-label="Mapa con el roadmap del PRM"></canvas>
+    <p id="message" class="message"></p>
+    <p class="hint">Arrastra el inicio (verde) o el objetivo (rojo). Arrastra en una zona vacía para añadir un obstáculo; haz clic en un obstáculo para borrarlo.</p>
+  </section>
+  <aside class="panel">
+    <div class="group">
+      <label>Mapa <select id="map"></select></label>
+    </div>
+    <div class="group">
+      <label class="slider">Muestras (N) <output id="nOut"></output><input id="n" type="range" min="20" max="1000" step="10" value="250"></label>
+      <label class="slider">Vecinos (k) <output id="kOut"></output><input id="k" type="range" min="2" max="20" value="8"></label>
+      <label class="slider">Radio del robot <output id="rOut"></output><input id="radius" type="range" min="2" max="24" value="8"></label>
+      <label class="slider">Velocidad <output id="speedOut"></output><input id="speed" type="range" min="0" max="4" value="2"></label>
+    </div>
+    <div class="group buttons">
+      <button id="btnSample">1 · Muestrear</button>
+      <button id="btnConnect">2 · Conectar</button>
+      <button id="btnQuery">3 · Consultar</button>
+      <button id="btnAll" class="primary">Todo seguido</button>
+      <button id="btnReset">Reiniciar</button>
+      <button id="btnSeed">Semilla <span id="seedOut"></span></button>
+    </div>
+    <div class="group checks">
+      <label><input type="checkbox" id="chkInflate" checked> Mostrar dilatación de obstáculos</label>
+      <label><input type="checkbox" id="chkRejected" checked> Mostrar muestras rechazadas</label>
+      <label><input type="checkbox" id="chkComps"> Colorear componentes conexas</label>
+    </div>
+    <div class="group">
+      <dl id="stats" class="stats"></dl>
+    </div>
+  </aside>
+</main>
+<script>
+(() => {
+'use strict';
+// ===== rng.js =====
+// Generador pseudoaleatorio con semilla (mulberry32): la misma semilla da
+// siempre el mismo resultado, útil para repetir un caso en clase.
+function makeRng(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// ===== geometry.js =====
+// Geometría y comprobación de colisiones.
+// El mundo mide WORLD_W x WORLD_H unidades (1 unidad = 1 píxel del lienzo).
+// Los obstáculos son rectángulos alineados con los ejes {x, y, w, h}.
+
+const WORLD_W = 960;
+const WORLD_H = 600;
+
+// Distancia de un punto a un rectángulo (0 si está dentro)
+function pointRectDist(px, py, r) {
+  const dx = Math.max(r.x - px, 0, px - (r.x + r.w));
+  const dy = Math.max(r.y - py, 0, py - (r.y + r.h));
+  return Math.hypot(dx, dy);
+}
+
+// Índice del obstáculo que contiene el punto, o -1
+function hitObstacle(px, py, obstacles) {
+  for (let i = obstacles.length - 1; i >= 0; i--) {
+    const o = obstacles[i];
+    if (px >= o.x && px <= o.x + o.w && py >= o.y && py <= o.y + o.h) return i;
+  }
+  return -1;
+}
+
+// ---------- Robot circular (CSpace 2D) ----------
+// Comprobar un robot de radio r equivale a comprobar un punto contra los
+// obstáculos dilatados r (suma de Minkowski).
+function pointFree(px, py, radius, obstacles, counter) {
+  if (counter) counter.checks++;
+  if (px < radius || py < radius || px > WORLD_W - radius || py > WORLD_H - radius) return false;
+  for (const o of obstacles) {
+    if (pointRectDist(px, py, o) < radius) return false;
+  }
+  return true;
+}
+
+// Un segmento es libre si lo son todos sus puntos, muestreados cada `step`
+function segmentFree(ax, ay, bx, by, radius, obstacles, counter, step = 3) {
+  const n = Math.max(1, Math.ceil(Math.hypot(bx - ax, by - ay) / step));
+  for (let i = 0; i <= n; i++) {
+    const t = i / n;
+    if (!pointFree(ax + (bx - ax) * t, ay + (by - ay) * t, radius, obstacles, counter)) return false;
+  }
+  return true;
+}
+
+// ---------- Robot rectangular (CSpace 3D: x, y, θ) ----------
+
+// Diferencia angular b - a en (-π, π]
+function angDiff(a, b) {
+  let d = b - a;
+  while (d > Math.PI) d -= 2 * Math.PI;
+  while (d <= -Math.PI) d += 2 * Math.PI;
+  return d;
+}
+
+// Esquinas del rectángulo L x W centrado en (x, y) y girado θ
+function obbCorners(x, y, th, L, W) {
+  const c = Math.cos(th), s = Math.sin(th), hl = L / 2, hw = W / 2;
+  return [
+    [x + c * hl - s * hw, y + s * hl + c * hw],
+    [x - c * hl - s * hw, y - s * hl + c * hw],
+    [x - c * hl + s * hw, y - s * hl - c * hw],
+    [x + c * hl + s * hw, y + s * hl - c * hw],
+  ];
+}
+
+function projectRange(points, ax, ay) {
+  let mn = Infinity, mx = -Infinity;
+  for (const p of points) {
+    const v = p[0] * ax + p[1] * ay;
+    if (v < mn) mn = v;
+    if (v > mx) mx = v;
+  }
+  return [mn, mx];
+}
+
+// Teorema del eje separador entre el rectángulo girado y uno alineado
+function obbHitsRect(corners, r) {
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const [px, py] of corners) {
+    if (px < minX) minX = px;
+    if (px > maxX) maxX = px;
+    if (py < minY) minY = py;
+    if (py > maxY) maxY = py;
+  }
+  if (maxX <= r.x || minX >= r.x + r.w || maxY <= r.y || minY >= r.y + r.h) return false;
+  const rc = [[r.x, r.y], [r.x + r.w, r.y], [r.x + r.w, r.y + r.h], [r.x, r.y + r.h]];
+  for (let k = 0; k < 2; k++) {
+    const ax = corners[k + 1][0] - corners[k][0];
+    const ay = corners[k + 1][1] - corners[k][1];
+    const [a0, a1] = projectRange(corners, ax, ay);
+    const [b0, b1] = projectRange(rc, ax, ay);
+    if (a1 <= b0 || b1 <= a0) return false;
+  }
+  return true;
+}
+
+function poseFree(x, y, th, robot, obstacles, counter) {
+  if (counter) counter.checks++;
+  const cs = obbCorners(x, y, th, robot.L, robot.W);
+  for (const [px, py] of cs) {
+    if (px < 0 || py < 0 || px > WORLD_W || py > WORLD_H) return false;
+  }
+  for (const o of obstacles) {
+    if (obbHitsRect(cs, o)) return false;
+  }
+  return true;
+}
+
+// Métrica en (x, y, θ): el ángulo se pondera con wTh (unidades de longitud por radián)
+function se2Dist(a, b, wTh) {
+  return Math.hypot(b.x - a.x, b.y - a.y, wTh * angDiff(a.th, b.th));
+}
+
+// Tramo libre en (x, y, θ): interpolación lineal comprobando poses intermedias.
+// El paso se elige para que ninguna esquina avance más de `step` entre comprobaciones.
+function se2EdgeFree(a, b, robot, obstacles, counter, step = 3) {
+  const dth = angDiff(a.th, b.th);
+  const trans = Math.hypot(b.x - a.x, b.y - a.y);
+  const sweep = Math.abs(dth) * Math.hypot(robot.L, robot.W) / 2;
+  const n = Math.max(1, Math.ceil((trans + sweep) / step));
+  for (let i = 0; i <= n; i++) {
+    const t = i / n;
+    if (!poseFree(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, a.th + dth * t, robot, obstacles, counter)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+// ===== maps.js =====
+// Mapas predefinidos. Coordenadas en un mundo de 960 x 600.
+
+const T = 16; // grosor de pared
+
+function rooms() {
+  return {
+    obstacles: [
+      { x: 320, y: 0, w: T, h: 130 }, { x: 320, y: 200, w: T, h: 400 },
+      { x: 640, y: 0, w: T, h: 380 }, { x: 640, y: 450, w: T, h: 150 },
+      { x: 0, y: 300, w: 230, h: T },
+      { x: 656, y: 260, w: 144, h: T }, { x: 880, y: 260, w: 80, h: T },
+      { x: 110, y: 420, w: 100, h: 60 }, { x: 430, y: 210, w: 110, h: 150 },
+      { x: 760, y: 410, w: 130, h: 50 },
+    ],
+    start: { x: 70, y: 70, th: 0 },
+    goal: { x: 900, y: 540, th: 0 },
+  };
+}
+
+function narrow() {
+  return {
+    obstacles: [
+      // pasillo de 120 de largo y 40 de ancho
+      { x: 420, y: 0, w: 120, h: 280 }, { x: 420, y: 320, w: 120, h: 280 },
+      { x: 160, y: 120, w: 120, h: 40 }, { x: 190, y: 400, w: 60, h: 110 },
+      { x: 700, y: 90, w: 90, h: 150 }, { x: 650, y: 400, w: 180, h: 40 },
+    ],
+    start: { x: 100, y: 470, th: 0 },
+    goal: { x: 860, y: 130, th: 0 },
+  };
+}
+
+function forest() {
+  const rng = makeRng(11);
+  const start = { x: 80, y: 520, th: 0 }, goal = { x: 880, y: 80, th: 0 };
+  const obstacles = [];
+  while (obstacles.length < 38) {
+    const w = 25 + rng() * 45, h = 25 + rng() * 45;
+    const x = rng() * (960 - w), y = rng() * (600 - h);
+    const cx = x + w / 2, cy = y + h / 2;
+    if (Math.hypot(cx - start.x, cy - start.y) < 90 || Math.hypot(cx - goal.x, cy - goal.y) < 90) continue;
+    obstacles.push({ x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h) });
+  }
+  return { obstacles, start, goal };
+}
+
+// Mapas pensados para el robot rectangular de 84 x 28
+function door() {
+  return {
+    obstacles: [
+      { x: 470, y: 0, w: 30, h: 270 }, { x: 470, y: 330, w: 30, h: 270 },
+      { x: 200, y: 130, w: 130, h: 60 }, { x: 650, y: 340, w: 60, h: 190 },
+    ],
+    start: { x: 170, y: 440, th: Math.PI / 2 },
+    goal: { x: 800, y: 160, th: Math.PI / 2 },
+  };
+}
+
+function warehouse() {
+  const obstacles = [];
+  for (const y of [100, 220, 340, 460]) obstacles.push({ x: 150, y, w: 660, h: 40 });
+  return {
+    obstacles,
+    start: { x: 300, y: 180, th: 0 },
+    goal: { x: 650, y: 420, th: Math.PI },
+  };
+}
+
+const POINT_MAPS = {
+  rooms: { name: 'Habitaciones', make: rooms },
+  narrow: { name: 'Paso estrecho', make: narrow },
+  forest: { name: 'Bosque de obstáculos', make: forest },
+};
+
+const SE2_MAPS = {
+  door: { name: 'Puerta estrecha', make: door },
+  warehouse: { name: 'Almacén (dar la vuelta)', make: warehouse },
+  rooms: { name: 'Habitaciones', make: rooms },
+};
+
+// ===== prm.js =====
+// Probabilistic Roadmap Method
+//  - Fase de construcción: muestrear configuraciones libres y conectar vecinos
+//  - Fase de consulta: unir inicio y objetivo al grafo y buscar con A*
+
+class MinHeap {
+  constructor() { this.a = []; }
+  get size() { return this.a.length; }
+  push(item, pri) {
+    const a = this.a;
+    a.push({ item, pri });
+    let i = a.length - 1;
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (a[p].pri <= a[i].pri) break;
+      [a[p], a[i]] = [a[i], a[p]];
+      i = p;
+    }
+  }
+  pop() {
+    const a = this.a;
+    const top = a[0];
+    const last = a.pop();
+    if (a.length) {
+      a[0] = last;
+      let i = 0;
+      for (;;) {
+        const l = 2 * i + 1, r = l + 1;
+        let m = i;
+        if (l < a.length && a[l].pri < a[m].pri) m = l;
+        if (r < a.length && a[r].pri < a[m].pri) m = r;
+        if (m === i) break;
+        [a[m], a[i]] = [a[i], a[m]];
+        i = m;
+      }
+    }
+    return top.item;
+  }
+}
+
+class PRM {
+  constructor(obstacles, radius, counter) {
+    this.obstacles = obstacles;
+    this.radius = radius;
+    this.counter = counter;
+    this.nodes = [];     // {x, y}
+    this.adj = [];       // listas de adyacencia
+    this.edges = [];     // [i, j] para dibujar
+    this.rejected = [];  // muestras que cayeron en obstáculo
+    this.attempts = 0;
+    this.uf = [];        // union-find para componentes conexas
+  }
+
+  isFree(x, y) { return pointFree(x, y, this.radius, this.obstacles, this.counter); }
+  segFree(a, b) { return segmentFree(a.x, a.y, b.x, b.y, this.radius, this.obstacles, this.counter); }
+
+  // Paso 1: generar nodos al azar en el espacio libre (muestreo con rechazo)
+  *sampleGen(n, rng) {
+    const maxAttempts = n * 300;
+    while (this.nodes.length < n && this.attempts < maxAttempts) {
+      const x = rng() * WORLD_W, y = rng() * WORLD_H;
+      this.attempts++;
+      if (this.isFree(x, y)) {
+        this.nodes.push({ x, y });
+        this.adj.push([]);
+        this.uf.push(this.nodes.length - 1);
+        yield { type: 'accept', x, y };
+      } else {
+        this.rejected.push({ x, y });
+        yield { type: 'reject', x, y };
+      }
+    }
+  }
+
+  // Los k nodos más cercanos a (x, y)
+  kNearest(x, y, k, exclude = -1) {
+    const best = [];
+    for (let i = 0; i < this.nodes.length; i++) {
+      if (i === exclude) continue;
+      const p = this.nodes[i];
+      const d = (p.x - x) ** 2 + (p.y - y) ** 2;
+      if (best.length < k || d < best[best.length - 1].d) {
+        let j = best.length;
+        best.push(null);
+        while (j > 0 && best[j - 1].d > d) { best[j] = best[j - 1]; j--; }
+        best[j] = { i, d };
+        if (best.length > k) best.pop();
+      }
+    }
+    return best;
+  }
+
+  // Paso 2: conectar cada nodo con sus k vecinos si el segmento no choca
+  *connectGen(k) {
+    for (let i = 0; i < this.nodes.length; i++) {
+      const a = this.nodes[i];
+      const tried = [];
+      for (const { i: j } of this.kNearest(a.x, a.y, k, i)) {
+        if (this.adj[i].includes(j)) continue;
+        const ok = this.segFree(a, this.nodes[j]);
+        tried.push({ j, ok });
+        if (ok) {
+          this.adj[i].push(j);
+          this.adj[j].push(i);
+          this.edges.push([i, j]);
+          this.union(i, j);
+        }
+      }
+      yield { type: 'node', i, tried };
+    }
+  }
+
+  find(i) {
+    while (this.uf[i] !== i) {
+      this.uf[i] = this.uf[this.uf[i]];
+      i = this.uf[i];
+    }
+    return i;
+  }
+
+  union(a, b) {
+    const ra = this.find(a), rb = this.find(b);
+    if (ra !== rb) this.uf[ra] = rb;
+  }
+
+  // Map raíz -> tamaño de la componente
+  components() {
+    const size = new Map();
+    for (let i = 0; i < this.nodes.length; i++) {
+      const r = this.find(i);
+      size.set(r, (size.get(r) || 0) + 1);
+    }
+    return size;
+  }
+
+  // Unir un punto externo (inicio u objetivo) a hasta k nodos visibles
+  link(p, k) {
+    const out = [];
+    for (const { i } of this.kNearest(p.x, p.y, k * 3)) {
+      if (out.length >= k) break;
+      if (this.segFree(p, this.nodes[i])) out.push(i);
+    }
+    return out;
+  }
+
+  // Fase de consulta
+  query(start, goal, k) {
+    const res = { ok: false, path: null, sLinks: [], gLinks: [], reason: '', length: 0, expanded: 0 };
+    if (!this.isFree(start.x, start.y)) { res.reason = 'start-collision'; return res; }
+    if (!this.isFree(goal.x, goal.y)) { res.reason = 'goal-collision'; return res; }
+    res.sLinks = this.link(start, k);
+    res.gLinks = this.link(goal, k);
+    const direct = this.segFree(start, goal);
+    if (!direct) {
+      if (!res.sLinks.length) { res.reason = 'start-isolated'; return res; }
+      if (!res.gLinks.length) { res.reason = 'goal-isolated'; return res; }
+    }
+
+    const n = this.nodes.length, S = n, G = n + 1;
+    const pos = (v) => (v === S ? start : v === G ? goal : this.nodes[v]);
+    const gSet = new Set(res.gLinks);
+    const neighbors = (v) => {
+      if (v === S) { const out = res.sLinks.slice(); if (direct) out.push(G); return out; }
+      if (v === G) return [];
+      const out = this.adj[v].slice();
+      if (gSet.has(v)) out.push(G);
+      return out;
+    };
+    const dist = new Float64Array(n + 2).fill(Infinity);
+    const prev = new Int32Array(n + 2).fill(-1);
+    const closed = new Uint8Array(n + 2);
+    const h = (v) => Math.hypot(pos(v).x - goal.x, pos(v).y - goal.y); // admisible
+    const heap = new MinHeap();
+    dist[S] = 0;
+    heap.push(S, h(S));
+    while (heap.size) {
+      const v = heap.pop();
+      if (closed[v]) continue;
+      closed[v] = 1;
+      res.expanded++;
+      if (v === G) break;
+      for (const w of neighbors(v)) {
+        const nd = dist[v] + Math.hypot(pos(w).x - pos(v).x, pos(w).y - pos(v).y);
+        if (nd < dist[w]) {
+          dist[w] = nd;
+          prev[w] = v;
+          heap.push(w, nd + h(w));
+        }
+      }
+    }
+    if (!isFinite(dist[G])) { res.reason = 'disconnected'; return res; }
+    const path = [];
+    for (let v = G; v !== -1; v = prev[v]) path.push(pos(v));
+    path.reverse();
+    res.ok = true;
+    res.path = path;
+    res.length = dist[G];
+    return res;
+  }
+}
+
+// ===== render.js =====
+// Dibujo de la escena del PRM
+
+const PALETTE = {
+  bg: '#fbfbfd', grid: '#eef0f5', obstacle: '#2b2d42', inflate: '#f6dfc6',
+  edge: '#a9c4e6', node: '#2f6fb3', rejected: '#e07070', path: '#d4148a',
+  start: '#2e9e5b', goal: '#d64545', ok: '#2e9e5b', bad: '#d64545', link: '#8a8f9c',
+};
+
+const COMP_COLORS = ['#2f6fb3', '#d4148a', '#2e9e5b', '#c9761e', '#7b4fc9', '#0f9ba8', '#b5452d', '#6b8e23'];
+
+function drawGrid(ctx) {
+  ctx.strokeStyle = PALETTE.grid;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let x = 40; x < WORLD_W; x += 40) { ctx.moveTo(x + 0.5, 0); ctx.lineTo(x + 0.5, WORLD_H); }
+  for (let y = 40; y < WORLD_H; y += 40) { ctx.moveTo(0, y + 0.5); ctx.lineTo(WORLD_W, y + 0.5); }
+  ctx.stroke();
+}
+
+// Obstáculos y, opcionalmente, su dilatación por el radio del robot
+function drawObstacles(ctx, obstacles, radius, showInflate) {
+  if (showInflate && radius > 0) {
+    ctx.save();
+    ctx.fillStyle = PALETTE.inflate;
+    ctx.strokeStyle = PALETTE.inflate;
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = 2 * radius;
+    for (const o of obstacles) {
+      ctx.beginPath();
+      ctx.rect(o.x, o.y, o.w, o.h);
+      ctx.fill();
+      ctx.stroke();
+    }
+    // los bordes del mundo también se dilatan
+    ctx.fillRect(0, 0, WORLD_W, radius);
+    ctx.fillRect(0, WORLD_H - radius, WORLD_W, radius);
+    ctx.fillRect(0, 0, radius, WORLD_H);
+    ctx.fillRect(WORLD_W - radius, 0, radius, WORLD_H);
+    ctx.restore();
+  }
+  ctx.fillStyle = PALETTE.obstacle;
+  for (const o of obstacles) ctx.fillRect(o.x, o.y, o.w, o.h);
+}
+
+function cross(ctx, x, y, s) {
+  ctx.moveTo(x - s, y - s); ctx.lineTo(x + s, y + s);
+  ctx.moveTo(x - s, y + s); ctx.lineTo(x + s, y - s);
+}
+
+function marker(ctx, p, color, label, radius) {
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.globalAlpha = 0.5;
+  ctx.setLineDash([4, 3]);
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, Math.max(radius, 1), 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+  ctx.fillStyle = color;
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, 8, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.font = '600 13px "Avenir Next", Avenir, system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+  ctx.strokeText(label, p.x, p.y - 14);
+  ctx.fillText(label, p.x, p.y - 14);
+}
+
+function drawScene(ctx, s) {
+  const prm = s.prm;
+  ctx.fillStyle = PALETTE.bg;
+  ctx.fillRect(0, 0, WORLD_W, WORLD_H);
+  drawGrid(ctx);
+  drawObstacles(ctx, s.obstacles, s.radius, s.show.inflate);
+
+  if (prm) {
+    if (s.show.rejected && prm.rejected.length) {
+      ctx.strokeStyle = PALETTE.rejected;
+      ctx.lineWidth = 1.2;
+      ctx.globalAlpha = 0.6;
+      ctx.beginPath();
+      for (const p of prm.rejected.slice(-800)) cross(ctx, p.x, p.y, 3);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+
+    // aristas
+    ctx.lineWidth = 1;
+    if (s.show.comps && s.compColor) {
+      for (const [i, j] of prm.edges) {
+        ctx.strokeStyle = s.compColor(i);
+        ctx.globalAlpha = 0.55;
+        ctx.beginPath();
+        ctx.moveTo(prm.nodes[i].x, prm.nodes[i].y);
+        ctx.lineTo(prm.nodes[j].x, prm.nodes[j].y);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+    } else {
+      ctx.strokeStyle = PALETTE.edge;
+      ctx.beginPath();
+      for (const [i, j] of prm.edges) {
+        ctx.moveTo(prm.nodes[i].x, prm.nodes[i].y);
+        ctx.lineTo(prm.nodes[j].x, prm.nodes[j].y);
+      }
+      ctx.stroke();
+    }
+
+    // nodos
+    for (let i = 0; i < prm.nodes.length; i++) {
+      const p = prm.nodes[i];
+      ctx.fillStyle = s.show.comps && s.compColor ? s.compColor(i) : PALETTE.node;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // evento actual de la animación
+    const ev = s.current;
+    if (ev && ev.type === 'accept') {
+      ctx.strokeStyle = PALETTE.ok;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(ev.x, ev.y, 9, 0, Math.PI * 2);
+      ctx.stroke();
+    } else if (ev && ev.type === 'reject') {
+      ctx.strokeStyle = PALETTE.bad;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      cross(ctx, ev.x, ev.y, 7);
+      ctx.stroke();
+    } else if (ev && ev.type === 'node' && prm.nodes[ev.i]) {
+      const a = prm.nodes[ev.i];
+      ctx.lineWidth = 2.5;
+      for (const t of ev.tried) {
+        const b = prm.nodes[t.j];
+        ctx.strokeStyle = t.ok ? PALETTE.ok : PALETTE.bad;
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
+      }
+      ctx.strokeStyle = PALETTE.obstacle;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(a.x, a.y, 8, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+
+  // consulta
+  const q = s.query;
+  if (q && prm) {
+    ctx.save();
+    ctx.setLineDash([5, 4]);
+    ctx.strokeStyle = PALETTE.link;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    for (const i of q.sLinks) { ctx.moveTo(s.start.x, s.start.y); ctx.lineTo(prm.nodes[i].x, prm.nodes[i].y); }
+    for (const i of q.gLinks) { ctx.moveTo(s.goal.x, s.goal.y); ctx.lineTo(prm.nodes[i].x, prm.nodes[i].y); }
+    ctx.stroke();
+    ctx.restore();
+    if (q.ok) {
+      ctx.strokeStyle = PALETTE.path;
+      ctx.lineWidth = 4;
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      q.path.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
+      ctx.stroke();
+    }
+  }
+
+  marker(ctx, s.start, PALETTE.start, 'Inicio', s.radius);
+  marker(ctx, s.goal, PALETTE.goal, 'Objetivo', s.radius);
+
+  if (s.draft) {
+    const d = s.draft;
+    ctx.save();
+    ctx.fillStyle = 'rgba(43,45,66,0.35)';
+    ctx.strokeStyle = PALETTE.obstacle;
+    ctx.setLineDash([4, 3]);
+    ctx.fillRect(d.x, d.y, d.w, d.h);
+    ctx.strokeRect(d.x, d.y, d.w, d.h);
+    ctx.restore();
+  }
+}
+
+// ===== main.js =====
+// Interfaz de la demo PRM
+
+
+
+
+
+const $ = (id) => document.getElementById(id);
+const canvas = $('canvas');
+const ctx = canvas.getContext('2d');
+
+// pasos de animación por fotograma para cada nivel de velocidad
+const SPEED_STEPS = [0.125, 1, 4, 25, Infinity];
+const SPEED_NAMES = ['Muy lenta', 'Lenta', 'Normal', 'Rápida', 'Instantánea'];
+
+const state = {
+  mapId: 'rooms', obstacles: [], start: null, goal: null,
+  seed: 1, n: 250, k: 8, radius: 8, speed: 2,
+  prm: null, counter: { checks: 0 }, rng: null,
+  phase: 'empty',           // empty | sampling | sampled | connecting | built
+  queue: [], gen: null, acc: 0,
+  ms: { sample: 0, connect: 0 }, buildChecks: 0,
+  current: null, query: null, queryMs: 0,
+  show: { inflate: true, rejected: true, comps: false },
+  compColor: null, compCount: 0, compLargest: 0,
+  drag: null, draft: null,
+};
+
+// ---------- lienzo ----------
+function setupCanvas() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width = WORLD_W * dpr;
+  canvas.height = WORLD_H * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+function toWorld(e) {
+  const r = canvas.getBoundingClientRect();
+  return { x: (e.clientX - r.left) * WORLD_W / r.width, y: (e.clientY - r.top) * WORLD_H / r.height };
+}
+
+// ---------- estado ----------
+function loadMap(id) {
+  state.mapId = id;
+  const m = POINT_MAPS[id].make();
+  state.obstacles = m.obstacles;
+  state.start = { x: m.start.x, y: m.start.y };
+  state.goal = { x: m.goal.x, y: m.goal.y };
+  resetRoadmap();
+}
+
+function resetRoadmap() {
+  state.counter = { checks: 0 };
+  state.rng = makeRng(state.seed);
+  state.prm = new PRM(state.obstacles, state.radius, state.counter);
+  state.phase = 'empty';
+  state.queue = [];
+  state.gen = null;
+  state.acc = 0;
+  state.ms = { sample: 0, connect: 0 };
+  state.buildChecks = 0;
+  state.current = null;
+  state.query = null;
+  state.queryMs = 0;
+  updateComponents();
+  setMessage();
+}
+
+function updateComponents() {
+  const prm = state.prm;
+  if (!prm || !prm.nodes.length) {
+    state.compColor = null; state.compCount = 0; state.compLargest = 0;
+    return;
+  }
+  const sizes = [...prm.components().entries()].sort((a, b) => b[1] - a[1]);
+  const colorOf = new Map();
+  sizes.forEach(([root, size], idx) => colorOf.set(root, idx < COMP_COLORS.length && size > 1 ? COMP_COLORS[idx] : '#b3b6bf'));
+  state.compColor = (i) => colorOf.get(prm.find(i));
+  state.compCount = sizes.length;
+  state.compLargest = sizes[0][1];
+}
+
+// ---------- fases ----------
+function enqueue(...phases) {
+  for (const p of phases) if (!state.queue.includes(p)) state.queue.push(p);
+}
+
+function request(target) {
+  // Encola lo que falte hasta llegar a la fase pedida
+  const order = ['sample', 'connect', 'query'];
+  const done = { empty: 0, sampling: 0, sampled: 1, connecting: 1, built: 2 }[state.phase];
+  const pending = state.gen ? (state.phase === 'sampling' ? 1 : 2) : done;
+  for (let i = pending; i <= order.indexOf(target); i++) enqueue(order[i]);
+}
+
+function startNext() {
+  const next = state.queue.shift();
+  if (!next) return;
+  if (next === 'sample') {
+    state.phase = 'sampling';
+    state.gen = state.prm.sampleGen(state.n, state.rng);
+  } else if (next === 'connect') {
+    state.phase = 'connecting';
+    state.gen = state.prm.connectGen(state.k);
+  } else if (next === 'query') {
+    runQuery();
+  }
+}
+
+function finishPhase() {
+  state.gen = null;
+  state.current = null;
+  if (state.phase === 'sampling') state.phase = 'sampled';
+  else if (state.phase === 'connecting') {
+    state.phase = 'built';
+    state.buildChecks = state.counter.checks;
+  }
+  updateComponents();
+}
+
+function runQuery() {
+  if (state.phase !== 'built') return;
+  const before = state.counter.checks;
+  const t0 = performance.now();
+  state.query = state.prm.query(state.start, state.goal, state.k);
+  state.queryMs = performance.now() - t0;
+  state.queryChecks = state.counter.checks - before;
+  state.counter.checks = before; // las comprobaciones de la consulta se cuentan aparte
+}
+
+function advance() {
+  if (!state.gen && state.queue.length) startNext();
+  if (!state.gen) return;
+  const per = SPEED_STEPS[state.speed];
+  let steps;
+  if (per === Infinity) steps = Infinity;
+  else { state.acc += per; steps = Math.floor(state.acc); state.acc -= steps; }
+  const key = state.phase === 'sampling' ? 'sample' : 'connect';
+  const t0 = performance.now();
+  let ev = null, done = false;
+  for (let i = 0; i < steps; i++) {
+    const r = state.gen.next();
+    if (r.done) { done = true; break; }
+    ev = r.value;
+  }
+  state.ms[key] += performance.now() - t0;
+  if (ev) state.current = ev;
+  if (state.phase === 'connecting') updateComponents();
+  if (done) {
+    finishPhase();
+    if (state.queue.length) startNext();
+  }
+}
+
+// ---------- textos ----------
+const fmt = (v, d = 0) => v.toLocaleString('es-ES', { maximumFractionDigits: d, minimumFractionDigits: d });
+
+function setMessage() {
+  const prm = state.prm;
+  const msg = $('message');
+  let t = '';
+  switch (state.phase) {
+    case 'empty':
+      t = '<b>Construcción, paso 1:</b> se generan configuraciones al azar y solo se guardan las que caen en espacio libre. La zona naranja es la dilatación de los obstáculos por el radio del robot: así el robot se trata como un punto.';
+      break;
+    case 'sampling':
+      t = `<b>Muestreando…</b> ${fmt(prm.nodes.length)} aceptadas de ${fmt(prm.attempts)} intentos. Las cruces rojas cayeron dentro de un obstáculo (dilatado) y se descartan.`;
+      break;
+    case 'sampled':
+      t = `<b>${fmt(prm.nodes.length)} nodos en espacio libre.</b> Paso 2: conectar cada nodo con sus ${state.k} vecinos más cercanos si el segmento entre ellos no choca.`;
+      break;
+    case 'connecting':
+      t = '<b>Conectando…</b> verde: segmento libre, se añade la arista. Rojo: el segmento choca y se descarta.';
+      break;
+    case 'built': {
+      const q = state.query;
+      if (!q) {
+        t = `<b>Roadmap construido:</b> ${fmt(prm.nodes.length)} nodos, ${fmt(prm.edges.length)} aristas, ${fmt(state.compCount)} componentes conexas. <b>Consulta:</b> unir inicio y objetivo al grafo y buscar el camino más corto (A*).`;
+      } else if (q.ok) {
+        t = `<b>Camino encontrado</b> (${fmt(q.length)} px). Arrastra el inicio o el objetivo: la consulta se repite en ${fmt(state.queryMs, 2)} ms sin reconstruir el roadmap. Ojo: es el más corto <i>dentro del grafo</i>, no en el espacio libre.`;
+      } else {
+        t = {
+          'start-collision': 'El inicio está dentro de un obstáculo dilatado: muévelo.',
+          'goal-collision': 'El objetivo está dentro de un obstáculo dilatado: muévelo.',
+          'start-isolated': 'El inicio no ve ningún nodo del roadmap. Prueba con más muestras.',
+          'goal-isolated': 'El objetivo no ve ningún nodo del roadmap. Prueba con más muestras.',
+          'disconnected': '<b>Sin camino:</b> inicio y objetivo quedan en componentes conexas distintas. Activa «Colorear componentes» para verlo: el roadmap no atraviesa el paso estrecho. Prueba con más muestras.',
+        }[q.reason];
+      }
+      break;
+    }
+  }
+  msg.innerHTML = t;
+}
+
+function updateStats() {
+  const prm = state.prm;
+  const q = state.query;
+  const rows = [
+    ['Muestras aceptadas', `${fmt(prm.nodes.length)} / ${fmt(prm.attempts)}`],
+    ['Aristas', fmt(prm.edges.length)],
+    ['Componentes conexas', state.compCount ? `${fmt(state.compCount)} (mayor: ${fmt(state.compLargest)})` : '–'],
+    ['Comprobaciones de colisión', fmt(state.counter.checks)],
+    ['Tiempo de construcción', state.phase === 'empty' ? '–' : `${fmt(state.ms.sample + state.ms.connect, 1)} ms`],
+    ['Tiempo de consulta', q ? `${fmt(state.queryMs, 2)} ms` : '–'],
+    ['Longitud del camino', q && q.ok ? `${fmt(q.length)} px` : '–'],
+  ];
+  $('stats').innerHTML = rows.map(([a, b]) => `<dt>${a}</dt><dd>${b}</dd>`).join('');
+}
+
+// ---------- bucle ----------
+let lastPhase = null, lastMsgFrame = 0;
+function frame() {
+  advance();
+  drawScene(ctx, state);
+  // el mensaje cambia con la fase; durante la animación se refresca de vez en cuando
+  lastMsgFrame++;
+  if (state.phase !== lastPhase || lastMsgFrame > 6) {
+    setMessage();
+    lastPhase = state.phase;
+    lastMsgFrame = 0;
+  }
+  updateStats();
+  requestAnimationFrame(frame);
+}
+
+// ---------- controles ----------
+function bindSlider(id, outId, fn, label = (v) => v) {
+  const el = $(id), out = $(outId);
+  const update = (reset) => {
+    const v = +el.value;
+    out.textContent = label(v);
+    fn(v, reset);
+  };
+  el.addEventListener('input', () => update(true));
+  update(false);
+}
+
+function initControls() {
+  const sel = $('map');
+  sel.innerHTML = Object.entries(POINT_MAPS).map(([k, m]) => `<option value="${k}">${m.name}</option>`).join('');
+  sel.value = state.mapId;
+  sel.addEventListener('change', () => loadMap(sel.value));
+
+  bindSlider('n', 'nOut', (v, r) => { state.n = v; if (r) resetRoadmap(); });
+  bindSlider('k', 'kOut', (v, r) => { state.k = v; if (r) resetRoadmap(); });
+  bindSlider('radius', 'rOut', (v, r) => { state.radius = v; if (r) resetRoadmap(); }, (v) => `${v} px`);
+  bindSlider('speed', 'speedOut', (v) => { state.speed = v; }, (v) => SPEED_NAMES[v]);
+
+  $('btnSample').addEventListener('click', () => { resetRoadmap(); enqueue('sample'); });
+  $('btnConnect').addEventListener('click', () => {
+    if (state.phase === 'built' || state.phase === 'connecting') resetRoadmap();
+    request('connect');
+  });
+  $('btnQuery').addEventListener('click', () => {
+    if (state.phase === 'built') { runQuery(); setMessage(); } else request('query');
+  });
+  $('btnAll').addEventListener('click', () => { resetRoadmap(); request('query'); });
+  $('btnReset').addEventListener('click', () => resetRoadmap());
+  $('btnSeed').addEventListener('click', () => { state.seed++; $('seedOut').textContent = `(${state.seed})`; resetRoadmap(); });
+  $('seedOut').textContent = `(${state.seed})`;
+
+  $('chkInflate').addEventListener('change', (e) => { state.show.inflate = e.target.checked; });
+  $('chkRejected').addEventListener('change', (e) => { state.show.rejected = e.target.checked; });
+  $('chkComps').addEventListener('change', (e) => { state.show.comps = e.target.checked; });
+}
+
+// ---------- ratón: mover inicio/objetivo, dibujar y borrar obstáculos ----------
+function initPointer() {
+  canvas.addEventListener('pointerdown', (e) => {
+    const p = toWorld(e);
+    canvas.setPointerCapture(e.pointerId);
+    if (Math.hypot(p.x - state.start.x, p.y - state.start.y) < 16) state.drag = { kind: 'start' };
+    else if (Math.hypot(p.x - state.goal.x, p.y - state.goal.y) < 16) state.drag = { kind: 'goal' };
+    else {
+      const hit = hitObstacle(p.x, p.y, state.obstacles);
+      state.drag = hit >= 0 ? { kind: 'delete', index: hit, x0: p.x, y0: p.y } : { kind: 'draw', x0: p.x, y0: p.y };
+    }
+  });
+  canvas.addEventListener('pointermove', (e) => {
+    const d = state.drag;
+    const p = toWorld(e);
+    if (!d) {
+      const over = Math.hypot(p.x - state.start.x, p.y - state.start.y) < 16 || Math.hypot(p.x - state.goal.x, p.y - state.goal.y) < 16;
+      canvas.style.cursor = over ? 'grab' : hitObstacle(p.x, p.y, state.obstacles) >= 0 ? 'pointer' : 'crosshair';
+      return;
+    }
+    const cx = Math.min(Math.max(p.x, 0), WORLD_W), cy = Math.min(Math.max(p.y, 0), WORLD_H);
+    if (d.kind === 'start' || d.kind === 'goal') {
+      state[d.kind] = { x: cx, y: cy };
+      if (state.phase === 'built' && state.query) { runQuery(); setMessage(); }
+    } else if (d.kind === 'draw') {
+      state.draft = { x: Math.min(d.x0, cx), y: Math.min(d.y0, cy), w: Math.abs(cx - d.x0), h: Math.abs(cy - d.y0) };
+    } else if (d.kind === 'delete' && Math.hypot(p.x - d.x0, p.y - d.y0) > 5) {
+      d.kind = 'none';
+    }
+  });
+  const end = () => {
+    const d = state.drag;
+    state.drag = null;
+    if (!d) return;
+    if (d.kind === 'draw' && state.draft && state.draft.w >= 8 && state.draft.h >= 8) {
+      const r = state.draft;
+      state.obstacles.push({ x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.w), h: Math.round(r.h) });
+      resetRoadmap();
+    } else if (d.kind === 'delete') {
+      state.obstacles.splice(d.index, 1);
+      resetRoadmap();
+    }
+    state.draft = null;
+  };
+  canvas.addEventListener('pointerup', end);
+  canvas.addEventListener('pointercancel', end);
+}
+
+setupCanvas();
+window.addEventListener('resize', setupCanvas);
+initControls();
+initPointer();
+loadMap(state.mapId);
+requestAnimationFrame(frame);
+
+// Acceso para depuración desde la consola
+window.prmDemo = state;
+})();
+</script>
+</body>
+</html>
