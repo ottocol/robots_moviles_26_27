@@ -48,7 +48,7 @@ En concreto el mapeado usa un archivo de configuración `slam.yaml`. El parámet
 ```yaml
 slam_toolbox:
   ros__parameters:
-    use_sim_time: false     # Si el simulador publica /clock, aquí se pone true (p.ej. Gazebo). mvsim no lo hace, así que false
+    use_sim_time: true     # Si el simulador publica /clock, aquí se pone true (p.ej. Gazebo, mvsim desde la v1.4.0
     odom_frame: odom
     base_frame: base_link
     map_frame: map
@@ -128,7 +128,7 @@ Para que esto funcione, necesitarás tener un mapa del entorno y un archivo de c
 Asegúrate que el AMCL que lanzaste en el paso anterior está parado, ya que la navegación lanza su propio AMCL. Para lanzar la navegación:
 
 ```bash
-ros2 launch nav2_bringup bringup_launch.py map:=./mimapa.yaml params_file:=./nav2.yaml use_sim_time:=false  
+ros2 launch nav2_bringup bringup_launch.py map:=./mimapa.yaml params_file:=./nav2.yaml use_sim_time:=true  
 ```
 
 Como siempre, si el mapa y/o el `nav2.yaml` no están en el directorio actual, cambia el `./` por la trayectoria para llegar hasta ellos.
