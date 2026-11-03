@@ -88,10 +88,10 @@ n, lab, stats, _ = cv2.connectedComponentsWithStats(occ, connectivity=8)
 small = stats[:, cv2.CC_STAT_AREA] < min_area
 small[0] = False                               # el fondo no
 img[small[lab]] = 254                          # pasa a libre
-cv2.imwrite(sys.argv[2], img)
+cv2.imwrite(sys.argv[1], img)
 ```
 
-Puedes ejecutarlo con `python3 limpiarMapa.py nombre_mapa.pgm nombre_mapa_limpio.pgm`. Una vez que compruebes que el mapa se ha limpiado correctamente puedes sustituir el fichero pgm original por el del mapa limpio.
+Puedes ejecutarlo con `python3 limpiarMapa.py nombre_mapa.pgm`. 
 
 
 ## Localización
