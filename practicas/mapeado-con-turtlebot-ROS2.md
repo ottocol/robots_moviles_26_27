@@ -117,7 +117,7 @@ Recuerda que:
 
 El siguiente paso es conseguir que el robot navegue de forma autónoma hasta un punto. 
 
-Asegúrate de que tienes parados los procesos de localización, mapeado y teleoperación y para también el del laser ya que lo arrancaremos de nuevo con otros parámetros. Cierra también rviz2. Solo debería quedar arrancada la base del robot (`kobuki.launch.py`) y la transformación del frame del laser al de la base.
+Asegúrate de que tienes parados los procesos de localización, mapeado y teleoperación y para también el del laser ya que lo arrancaremos de nuevo con otros parámetros. Cierra también rviz2. **Solo debería quedar arrancada la base del robot (`kobuki.launch.py`) y la transformación del frame del laser al de la base (el `static_transform_publisher`)**
 
 El archivo de configuración de navegación del paquete `kobuki` espera que el topic del laser sea `scan_filtered`. Para no tener que cambiar este valor, una solución sencilla es volver a lanzar el laser pero ahora con este nuevo topic.
 
