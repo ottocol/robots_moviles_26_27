@@ -1,0 +1,18 @@
+digraph BT {
+  rankdir=TB; bgcolor="white"; nodesep=0.35; ranksep=0.45;
+  node [fontname="DejaVu Sans", fontsize=11, style=filled];
+  edge [color="#444444", arrowsize=0.7];
+  raiz [label="⇉  Raíz\nParallel · SuccessOnSelected([Misión])", shape=parallelogram, fillcolor="#ffd54f"];
+  bb [label="Rojo → BB\n(ToBlackboard)", shape=ellipse, fillcolor="#e0e0e0"];
+  mision [label="→  Misión\nSequence (memory=True)", shape=box, fillcolor="#ffb74d"];
+  buscar [label="⇉  Buscar rojo\nParallel · SuccessOnOne", shape=parallelogram, fillcolor="#ffd54f"];
+  deamb [label="Deambular\n(propio, siempre RUNNING)", shape=ellipse, fillcolor="#e0e0e0"];
+  rojo [label="¿Rojo?\nWaitForBlackboardVariableValue", shape=ellipse, fillcolor="#c5e1a5"];
+  foto [label="Hacer foto\n(service_clients.FromConstant)", shape=ellipse, fillcolor="#e0e0e0"];
+  retry [label="Reintentar x3\n(decorators.Retry)", shape=octagon, fillcolor="#ffffff"];
+  nav [label="Ir a destino\n(action_clients.FromConstant)", shape=ellipse, fillcolor="#e0e0e0"];
+  raiz -> bb; raiz -> mision;
+  mision -> buscar; mision -> foto; mision -> retry;
+  buscar -> deamb; buscar -> rojo;
+  retry -> nav;
+}

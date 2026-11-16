@@ -1,0 +1,29 @@
+digraph FSM {
+  rankdir=LR; bgcolor="white"; fontname="DejaVu Sans";
+  node [fontname="DejaVu Sans", fontsize=11, shape=box, style="rounded,filled", fillcolor="#dbe9f6", color="#3b6ea5"];
+  edge [fontname="DejaVu Sans", fontsize=9, color="#444444"];
+  inicio [shape=point, width=0.15, fillcolor=black];
+  ACTIVAR_DEAMBULAR [label="ACTIVAR_DEAMBULAR\n(ServiceState)"];
+  BUSCAR_ROJO [label="BUSCAR_ROJO\n(estado propio)"];
+  PARAR_DEAMBULAR [label="PARAR_DEAMBULAR\n(ServiceState)"];
+  HACER_FOTO [label="HACER_FOTO\n(ServiceState)"];
+  IR_A_DESTINO [label="IR_A_DESTINO\n(ActionState)"];
+  COMPROBAR_INTENTOS [label="COMPROBAR_INTENTOS\n(CbState)"];
+  node [shape=doublecircle, style=filled, fontsize=10, width=0.9, fixedsize=true];
+  completada [fillcolor="#c8e6c9", color="#2e7d32"];
+  fallida [fillcolor="#ffcdd2", color="#c62828"];
+  cancelada [fillcolor="#eeeeee", color="#757575"];
+  inicio -> ACTIVAR_DEAMBULAR;
+  ACTIVAR_DEAMBULAR -> BUSCAR_ROJO [label="succeeded"];
+  ACTIVAR_DEAMBULAR -> fallida [label="aborted"];
+  BUSCAR_ROJO -> PARAR_DEAMBULAR [label="detectado"];
+  BUSCAR_ROJO -> cancelada [label="canceled"];
+  PARAR_DEAMBULAR -> HACER_FOTO [label="succeeded"];
+  PARAR_DEAMBULAR -> fallida [label="aborted"];
+  HACER_FOTO -> IR_A_DESTINO [label="succeeded\nsin_foto\naborted"];
+  IR_A_DESTINO -> completada [label="succeeded"];
+  IR_A_DESTINO -> COMPROBAR_INTENTOS [label="aborted"];
+  IR_A_DESTINO -> cancelada [label="canceled"];
+  COMPROBAR_INTENTOS -> IR_A_DESTINO [label="reintentar"];
+  COMPROBAR_INTENTOS -> fallida [label="agotados"];
+}

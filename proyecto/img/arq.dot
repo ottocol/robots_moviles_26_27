@@ -1,0 +1,20 @@
+digraph ARQ {
+  rankdir=TB; bgcolor="white"; nodesep=0.5; ranksep=0.8; splines=true;
+  node [fontname="DejaVu Sans", fontsize=11];
+  edge [fontname="DejaVu Sans", fontsize=9, color="#444444"];
+  node [shape=note, style=filled, fillcolor="#f5f5f5"];
+  cam [label="/camera1_image"]; scan [label="/scan"]; cmd [label="/cmd_vel  → robot"];
+  { rank=same; cam; scan; cmd; }
+  node [shape=box, style="rounded,filled", fillcolor="#dbe9f6", color="#3b6ea5"];
+  det [label="detector_rojo\n(percepción)"];
+  fot [label="fotografo\n(acción puntual)"];
+  dea [label="deambulador\n(conducta)"];
+  nav [label="Nav2\n(navegación)", fillcolor="#e8eaf6", color="#5c6bc0"];
+  { rank=same; det; fot; dea; nav; }
+  coord [label="COORDINADOR\nfsm_yasmin   ó   bt_pytrees", fillcolor="#ffe0b2", color="#ef6c00", fontsize=12];
+  cam -> det; cam -> fot; scan -> dea; dea -> cmd; nav -> cmd;
+  det -> coord [label=" topic\n /detector_rojo/detectado\n (Bool, continuo)"];
+  coord -> fot [label=" servicio\n /fotografo/hacer_foto\n (Trigger)", style=dashed];
+  coord -> dea [label=" servicio\n /deambulador/activar\n (SetBool)", style=dashed];
+  coord -> nav [label=" acción\n /navigate_to_pose\n (NavigateToPose)", style=bold];
+}
