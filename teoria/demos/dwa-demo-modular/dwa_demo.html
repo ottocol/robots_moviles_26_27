@@ -1,0 +1,2308 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Ventana dinámica</title>
+  <meta name="claude:viewport-fit-sides" content="cover">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+  <style>
+/* Diseño: herramienta de laboratorio para proyectar en clase.
+   Mundo grande a la izquierda; a la derecha, espacio (v, ω) y desglose de G;
+   parámetros debajo. Neutros con un leve tinte verde-gris; azul para el robot,
+   ámbar para el par elegido; los tres criterios con colores propios. */
+
+:root {
+  --bg: #eceeec;
+  --surface: #fafbfa;
+  --ink: #1b2129;
+  --muted: #5b6570;
+  --line: #d4d9d6;
+  --accent: #2c63c9;
+  --accent-ink: #ffffff;
+
+  --canvas-bg: #fafbfa;
+  --free: #ffffff;
+  --obstacle: #27303a;
+  --grid-line: #e2e6e4;
+  --robot: #2c63c9;
+  --goal: #12866a;
+  --best: #f0a500;
+  --bad: #d1343d;
+  --window: #24944a;
+  --inadmissible: #cfd5d2;
+  --rejected: #a3aab1;
+  --trail: #2c63c9;
+  --scale-lo: #c6dbf5;
+  --scale-hi: #0a3b8c;
+
+  --c-heading: #7b4fc4;
+  --c-dist: #0f8585;
+  --c-vel: #d2701f;
+
+  --font-ui: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+  --radius: 10px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1215;
+    --surface: #161b20;
+    --ink: #e3e8ec;
+    --muted: #93a0ab;
+    --line: #29323a;
+    --accent: #6ea2ff;
+    --accent-ink: #0b1220;
+    --canvas-bg: #161b20;
+    --free: #1c232a;
+    --obstacle: #c5ced6;
+    --grid-line: #252e36;
+    --robot: #6ea2ff;
+    --goal: #3fcf9f;
+    --best: #ffbf3c;
+    --bad: #ff6b70;
+    --window: #53c46f;
+    --inadmissible: #2d353d;
+    --rejected: #5c6670;
+    --trail: #6ea2ff;
+    --scale-lo: #22344d;
+    --scale-hi: #a9cdff;
+    --c-heading: #b08cff;
+    --c-dist: #4cc9c9;
+    --c-vel: #ffa45c;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg: #0e1215;
+  --surface: #161b20;
+  --ink: #e3e8ec;
+  --muted: #93a0ab;
+  --line: #29323a;
+  --accent: #6ea2ff;
+  --accent-ink: #0b1220;
+  --canvas-bg: #161b20;
+  --free: #1c232a;
+  --obstacle: #c5ced6;
+  --grid-line: #252e36;
+  --robot: #6ea2ff;
+  --goal: #3fcf9f;
+  --best: #ffbf3c;
+  --bad: #ff6b70;
+  --window: #53c46f;
+  --inadmissible: #2d353d;
+  --rejected: #5c6670;
+  --trail: #6ea2ff;
+  --scale-lo: #22344d;
+  --scale-hi: #a9cdff;
+  --c-heading: #b08cff;
+  --c-dist: #4cc9c9;
+  --c-vel: #ffa45c;
+  color-scheme: dark;
+}
+
+/* ---------- Base ---------- */
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 14px/1.45 var(--font-ui);
+  padding-block: 16px 24px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+h1, h2 { margin: 0; text-wrap: balance; }
+h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
+h2 { font-size: 15px; font-weight: 600; letter-spacing: 0.01em; }
+h2 .unit { font-family: var(--font-mono); font-size: 13px; font-weight: 500; color: var(--muted); margin-left: 6px; }
+
+button, select, input { font: inherit; color: inherit; }
+
+button, select {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+button:hover, select:hover { border-color: var(--muted); }
+button:focus-visible, select:focus-visible, input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+button:disabled { opacity: 0.45; cursor: not-allowed; }
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+button.ghost { background: transparent; }
+button[aria-pressed="true"] { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+
+input[type="range"] { accent-color: var(--accent); width: 110px; }
+
+/* ---------- Cabecera y estado ---------- */
+
+.topbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px 24px;
+  max-width: 1500px;
+  margin: 0 auto 10px;
+}
+.brand { min-width: 0; }
+.brand p { margin: 4px 0 0; color: var(--muted); max-width: 70ch; }
+.run { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+
+.inline-range, .inline-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.inline-range output { min-width: 6.5ch; color: var(--ink); }
+
+.statusbar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 16px;
+  max-width: 1500px;
+  margin: 0 auto 12px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+#status { font-weight: 600; }
+#status[data-state="goal"] { color: var(--goal); }
+#status[data-state="stuck"], #status[data-state="warning"] { color: var(--bad); }
+#step-count { color: var(--muted); font-size: 13px; }
+
+/* ---------- Explicación (ocultable) ---------- */
+
+.explain {
+  max-width: 1500px;
+  margin: 0 auto 14px;
+  padding-block: 10px;
+}
+.explain summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 15px;
+  list-style-position: inside;
+}
+.explain[open] summary { margin-bottom: 10px; }
+.explain-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 6px 28px;
+}
+.explain-grid section { min-width: 0; }
+.explain h3 { margin: 4px 0 6px; font-size: 13.5px; font-weight: 600; }
+.explain ol, .explain ul { margin: 0; padding-left: 1.2em; display: grid; gap: 5px; }
+.explain li, .explain dd { color: var(--muted); font-size: 13.5px; max-width: 65ch; }
+.explain strong { color: var(--ink); font-weight: 600; }
+.explain dl { margin: 0; }
+.explain dt { font-weight: 600; font-size: 13.5px; margin-top: 6px; }
+.explain dt:first-child { margin-top: 0; }
+.explain dd { margin: 2px 0 0; }
+.explain .c-heading { color: var(--c-heading); }
+.explain .c-dist { color: var(--c-dist); }
+.explain .c-vel { color: var(--c-vel); }
+
+/* ---------- Rejilla principal ---------- */
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr);
+  gap: 14px;
+  max-width: 1500px;
+  margin: 0 auto;
+}
+.params { grid-column: 1 / -1; }
+.side { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px 14px 14px;
+  min-width: 0;
+}
+.panel-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  margin-bottom: 10px;
+}
+.toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+
+.segmented { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.segmented button { border: 0; border-radius: 0; border-right: 1px solid var(--line); }
+.segmented button:last-child { border-right: 0; }
+
+.canvas-frame { border-radius: 6px; overflow: hidden; border: 1px solid var(--line); }
+.canvas-frame canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+.world-frame { aspect-ratio: 3 / 2; }
+.velocity-frame { aspect-ratio: 4 / 3; }
+canvas[data-tool="paint"], canvas[data-tool="erase"] { cursor: none; }
+canvas[data-tool="robot"], canvas[data-tool="goal"] { cursor: crosshair; }
+
+.hint { margin: 8px 0 0; color: var(--muted); font-size: 12.5px; }
+
+/* ---------- Leyendas ---------- */
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.legend li { display: inline-flex; align-items: center; gap: 6px; }
+.sw { display: inline-grid; place-items: center; width: 22px; height: 12px; font-style: normal; font-size: 12px; font-weight: 700; }
+.sw-scale { background: linear-gradient(90deg, var(--scale-lo), var(--scale-hi)); border-radius: 3px; height: 6px; }
+.sw-dash { border-top: 2px dashed var(--rejected); height: 0; }
+.sw-cross { color: var(--bad); }
+.sw-best { height: 9px; border-radius: 5px; background: linear-gradient(var(--best) 0 35%, var(--ink) 35% 65%, var(--best) 65%); }
+.sw-ghost { width: 14px; height: 14px; border-radius: 50%; border: 1.5px dashed var(--ink); }
+.sw-vs { border: 1.5px solid var(--muted); background: var(--free); }
+.sw-shade { background: var(--inadmissible); }
+.sw-window { border: 2.5px solid var(--window); border-radius: 3px; }
+.sw-plus { color: var(--robot); font-size: 16px; }
+.sw-star { color: var(--best); font-size: 15px; -webkit-text-stroke: 0.6px var(--ink); }
+
+/* ---------- Desglose de G ---------- */
+
+.breakdown { display: flex; flex-direction: column; gap: 10px; }
+.bd-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 4px 12px; }
+.bd-title { font-weight: 700; font-size: 15px; }
+.bd-vw { color: var(--muted); font-size: 13px; }
+.bd-rows { display: grid; gap: 7px; }
+.bd-row, .bd-total {
+  display: grid;
+  grid-template-columns: 4.5rem minmax(0, 1fr) minmax(70px, 1.1fr) 11.5rem;
+  align-items: center;
+  gap: 10px;
+}
+.bd-name { font-weight: 600; }
+.bd-raw { font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bd-contrib { font-size: 12.5px; text-align: right; white-space: nowrap; }
+.bd-bar { height: 10px; border-radius: 5px; background: var(--bg); overflow: hidden; }
+.bd-bar i { display: block; height: 100%; width: 0; border-radius: 5px; transition: width 120ms ease; }
+.bd-row[data-criterion="heading"] .bd-name, .bd-row[data-criterion="heading"] .bd-contrib { color: var(--c-heading); }
+.bd-row[data-criterion="dist"] .bd-name, .bd-row[data-criterion="dist"] .bd-contrib { color: var(--c-dist); }
+.bd-row[data-criterion="vel"] .bd-name, .bd-row[data-criterion="vel"] .bd-contrib { color: var(--c-vel); }
+.bd-row[data-criterion="heading"] .bd-bar i, .bd-stack i[data-criterion="heading"] { background: var(--c-heading); }
+.bd-row[data-criterion="dist"] .bd-bar i, .bd-stack i[data-criterion="dist"] { background: var(--c-dist); }
+.bd-row[data-criterion="vel"] .bd-bar i, .bd-stack i[data-criterion="vel"] { background: var(--c-vel); }
+
+.bd-total { padding-top: 8px; border-top: 1px solid var(--line); grid-template-columns: 4.5rem minmax(0, 1fr) auto; }
+.bd-stack { display: flex; height: 14px; border-radius: 4px; background: var(--bg); overflow: hidden; }
+.bd-stack i { display: block; height: 100%; transition: width 120ms ease; }
+.bd-g { font-size: 18px; font-weight: 600; }
+.bd-note { margin: 0; color: var(--muted); font-size: 13px; }
+.breakdown.is-empty .bd-rows, .breakdown.is-empty .bd-total { opacity: 0.35; }
+
+/* ---------- Parámetros ---------- */
+
+.param-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 6px 24px;
+}
+.param-grid fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
+.param-grid legend { font-weight: 600; margin-bottom: 6px; font-size: 13px; }
+.param {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0 8px;
+  margin-bottom: 6px;
+}
+.param label { color: var(--muted); font-size: 13px; }
+.param output { font-size: 13px; }
+.param input { grid-column: 1 / -1; width: 100%; }
+
+/* ---------- Pantallas estrechas ---------- */
+
+@media (max-width: 980px) {
+  .layout { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 520px) {
+  .bd-row { grid-template-columns: 4rem minmax(0, 1fr); }
+  .bd-row .bd-bar { grid-column: 1 / -1; }
+  .bd-row .bd-contrib { grid-column: 1 / -1; text-align: left; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bd-bar i, .bd-stack i { transition: none; }
+}
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <h1>Ventana dinámica</h1>
+      <p>El DWA de Fox, Burgard y Thrun (1997), paso a paso: de las velocidades alcanzables en Δt se elige la que maximiza
+        <span class="mono">G(v, ω) = α·heading + β·dist + γ·vel</span></p>
+    </div>
+    <div class="run" role="group" aria-label="Ejecución">
+      <button id="btn-step" class="primary" type="button">Paso ▸</button>
+      <button id="btn-play" type="button" aria-pressed="false">Reproducir</button>
+      <button id="btn-reset" type="button">Reiniciar</button>
+      <label class="inline-range" for="speed">velocidad
+        <input id="speed" type="range" min="1" max="20" step="1">
+        <output id="speed-out" for="speed" class="mono"></output>
+      </label>
+    </div>
+  </header>
+
+  <div class="statusbar">
+    <span id="status" data-state="ready"></span>
+    <span id="step-count" class="mono"></span>
+  </div>
+
+  <details class="panel explain" id="explain">
+    <summary>Cómo leer la demo</summary>
+    <div class="explain-grid">
+      <section>
+        <h3>En cada paso</h3>
+        <ol>
+          <li>Se calcula la <strong>ventana dinámica</strong>: los (v, ω) que el robot puede alcanzar en el siguiente Δt con sus aceleraciones máximas.</li>
+          <li>Se muestrea la ventana y cada par se puntúa con <span class="mono">G = α·heading + β·dist + γ·vel</span>.</li>
+          <li>El robot aplica el par con mayor G <strong>solo durante Δt</strong> y en el siguiente paso vuelve a evaluarlo todo desde la nueva posición.</li>
+        </ol>
+      </section>
+
+      <section>
+        <h3>Qué se dibuja para cada criterio</h3>
+        <dl>
+          <dt class="c-dist">dist → las curvaturas</dt>
+          <dd>Cada (v, ω) define una circunferencia de radio v/ω. Se recorre una longitud fija (el «arco evaluado», 2 m) y dist es lo que se avanza hasta el primer obstáculo (✕), o el tope si no choca. Con ese dist se decide también si el par es <em>admisible</em>: si da tiempo a frenar, v·Δt + v²/(2a) ≤ dist.</dd>
+          <dt class="c-heading">heading → el robot fantasma</dt>
+          <dd>Es la pose a la que llegaría aplicando el par durante Δt y frenando después. Está sobre la misma curvatura. heading es π − Δθ, donde Δθ es el ángulo entre hacia dónde miraría y la dirección al objetivo.</dd>
+          <dt class="c-vel">vel → la altura en el panel (v, ω)</dt>
+          <dd>Es la propia v; no tiene dibujo en el mundo.</dd>
+        </dl>
+      </section>
+
+      <section>
+        <h3>Para no confundirse</h3>
+        <ul>
+          <li>La curvatura completa <strong>no es el camino que seguirá el robot</strong>: solo recorre su primer trozo (Δt). Sirve para preguntar «si siguiera girando así, ¿cuánto espacio libre tendría?».</li>
+          <li>El <strong>color</strong> de curvaturas y puntos es la puntuación elegida en «colorear por» (G por defecto), no dist.</li>
+          <li>dist se mide por curvatura y no por tiempo: un par lento simulado unos segundos casi no avanza y «no ve» la pared que tiene delante, así que pararse parecería seguro. Delante de un obstáculo la elección es entre pararse o girar sobre sí mismo (las dos con v = 0), y solo dist puede inclinar la balanza.</li>
+          <li>Cada criterio se normaliza a [0, 1] antes de ponderarlo: con min-max sobre los pares admisibles de la ventana, o dividiendo por su máximo teórico.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h3>Cosas para probar</h3>
+        <ul>
+          <li><strong>Trampa en U:</strong> el robot entra y se queda atascado. Es un mínimo local; el DWA solo mira a corto plazo y necesita un planificador global.</li>
+          <li><strong>Aceleraciones:</strong> súbelas y la ventana crece hasta casi cubrir V<sub>s</sub>; bájalas y el robot tiene que empezar a girar mucho antes de la pared.</li>
+          <li><strong>Arco evaluado por debajo de la distancia de frenada</strong> (1,25 m con los valores por defecto): el robot no pasa de cierta velocidad ni en el mapa vacío.</li>
+          <li><strong>Pesos:</strong> con α alto el robot se planta delante de los obstáculos alineados con el objetivo.</li>
+        </ul>
+      </section>
+    </div>
+  </details>
+
+  <main class="layout">
+    <section class="panel world-panel" aria-labelledby="world-title">
+      <div class="panel-head">
+        <h2 id="world-title">Mundo <span class="unit">12 × 8 m</span></h2>
+        <div class="toolbar">
+          <div id="tools" class="segmented" role="group" aria-label="Herramienta">
+            <button type="button" data-value="paint">Obstáculo</button>
+            <button type="button" data-value="erase">Borrar</button>
+            <button type="button" data-value="robot">Robot</button>
+            <button type="button" data-value="goal">Objetivo</button>
+          </div>
+          <label class="inline-range" for="brush">pincel
+            <input id="brush" type="range" min="0.1" max="0.8" step="0.05">
+            <output id="brush-out" for="brush" class="mono"></output>
+          </label>
+          <select id="scenario" aria-label="Escenario"></select>
+          <button id="btn-clear" class="ghost" type="button">Vaciar mapa</button>
+        </div>
+      </div>
+      <div class="canvas-frame world-frame">
+        <canvas id="world-canvas" data-tool="paint" aria-label="Mapa con el robot, el objetivo y las curvaturas evaluadas"></canvas>
+      </div>
+      <ul class="legend">
+        <li><i class="sw sw-scale"></i>curvatura admisible (color: peor → mejor)</li>
+        <li><i class="sw sw-dash"></i>no admisible</li>
+        <li><i class="sw sw-cross">✕</i>choque en la curvatura</li>
+        <li><i class="sw sw-best"></i>par elegido</li>
+        <li><i class="sw sw-ghost"></i>pose donde se mide el heading</li>
+      </ul>
+      <p class="hint">Robot: haz clic para colocarlo y arrastra para orientarlo. Pasa el ratón por una curvatura para ver su puntuación. Teclado: espacio = reproducir, → = paso, R = reiniciar.</p>
+    </section>
+
+    <aside class="side">
+      <section class="panel" aria-labelledby="velocity-title">
+        <div class="panel-head">
+          <h2 id="velocity-title">Espacio de velocidades (v, ω)</h2>
+          <label class="inline-select" for="color-by">colorear por
+            <select id="color-by">
+              <option value="G">G (total)</option>
+              <option value="heading">heading</option>
+              <option value="dist">dist</option>
+              <option value="vel">vel</option>
+            </select>
+          </label>
+        </div>
+        <div class="canvas-frame velocity-frame">
+          <canvas id="velocity-canvas" aria-label="Espacio de velocidades con la ventana dinámica"></canvas>
+        </div>
+        <ul class="legend">
+          <li><i class="sw sw-vs"></i><span>V<sub>s</sub>: posibles</span></li>
+          <li><i class="sw sw-shade"></i>no admisibles</li>
+          <li><i class="sw sw-window"></i>ventana dinámica</li>
+          <li><i class="sw sw-plus">+</i>velocidad actual</li>
+          <li><i class="sw sw-star">★</i>mejor G</li>
+        </ul>
+      </section>
+
+      <section class="panel breakdown" id="breakdown" aria-live="polite"></section>
+    </aside>
+
+    <section class="panel params" aria-labelledby="params-title">
+      <div class="panel-head">
+        <h2 id="params-title">Parámetros</h2>
+        <label class="inline-select" for="normalization">normalización
+          <select id="normalization">
+            <option value="minmax">min-max sobre la ventana</option>
+            <option value="fixed">dividir por el máximo teórico</option>
+          </select>
+        </label>
+      </div>
+      <div id="param-controls" class="param-grid"></div>
+    </section>
+  </main>
+
+  <script>
+(() => {
+'use strict';
+
+/* ===== geometry.js ===== */
+/**
+ * geometry.js — Utilidades matemáticas pequeñas, sin dependencias.
+ */
+
+const TAU = 2 * Math.PI;
+
+/** Normaliza un ángulo al intervalo (-π, π]. */
+function wrapAngle(angle) {
+  let a = (angle + Math.PI) % TAU;
+  if (a < 0) a += TAU;
+  return a - Math.PI;
+}
+
+function clamp(x, lo, hi) {
+  return Math.min(hi, Math.max(lo, x));
+}
+
+function lerp(a, b, t) {
+  return a + (b - a) * t;
+}
+
+/** n valores equiespaciados entre lo y hi (ambos incluidos); devuelve el k-ésimo. */
+function linspaceAt(lo, hi, n, k) {
+  return n <= 1 ? (lo + hi) / 2 : lo + ((hi - lo) * k) / (n - 1);
+}
+
+function radToDeg(rad) {
+  return (rad * 180) / Math.PI;
+}
+
+/* ===== config.js ===== */
+/**
+ * config.js — Tamaño del mundo, parámetros por defecto y descripción de los
+ * controles de la interfaz (la UI se genera a partir de PARAM_SPECS).
+ */
+
+/** Mundo de 12 × 8 m con celdas de 10 cm. */
+const WORLD_SIZE = { width: 12, height: 8, cell: 0.1 };
+
+const DEFAULT_PARAMS = {
+  // Pesos de la función objetivo G(v, ω) = α·heading + β·dist + γ·vel
+  alpha: 0.4,
+  beta: 0.4,
+  gamma: 0.2,
+
+  // Robot (diferencial, modelado como un disco)
+  radius: 0.25, // m
+  vMax: 1.0, // m/s   (no se permite marcha atrás: v ∈ [0, vMax])
+  wMax: 2.5, // rad/s (ω ∈ [-wMax, wMax])
+  accV: 0.5, // m/s²  aceleración / frenada lineal máxima
+  accW: 2.0, // rad/s² aceleración angular máxima
+
+  // Algoritmo
+  dt: 0.25, // s  periodo de control: la ventana es lo alcanzable en Δt
+  samplesV: 7, // muestras de v dentro de la ventana
+  samplesW: 17, // muestras de ω dentro de la ventana
+  dMax: 2.0, // m  longitud de curvatura evaluada = tope del criterio dist
+  arcStep: 0.05, // m  resolución al recorrer cada curvatura
+  normalization: 'minmax', // 'minmax' (sobre la ventana) | 'fixed' (máximo teórico)
+
+  goalTolerance: 0.3, // m
+};
+
+/** Controles deslizantes, agrupados. `key` es la clave en DEFAULT_PARAMS. */
+const PARAM_SPECS = [
+  {
+    group: 'Pesos de G(v, ω)',
+    items: [
+      { key: 'alpha', label: 'α · heading', min: 0, max: 1, step: 0.05 },
+      { key: 'beta', label: 'β · dist', min: 0, max: 1, step: 0.05 },
+      { key: 'gamma', label: 'γ · vel', min: 0, max: 1, step: 0.05 },
+    ],
+  },
+  {
+    group: 'Robot',
+    items: [
+      { key: 'vMax', label: 'v máx', unit: 'm/s', min: 0.2, max: 2, step: 0.1 },
+      { key: 'wMax', label: 'ω máx', unit: 'rad/s', min: 0.5, max: 4, step: 0.1 },
+      { key: 'accV', label: 'aceleración lineal', unit: 'm/s²', min: 0.2, max: 3, step: 0.1 },
+      { key: 'accW', label: 'aceleración angular', unit: 'rad/s²', min: 0.5, max: 10, step: 0.5 },
+      { key: 'radius', label: 'radio', unit: 'm', min: 0.1, max: 0.5, step: 0.05 },
+    ],
+  },
+  {
+    group: 'Algoritmo',
+    items: [
+      { key: 'dt', label: 'Δt (periodo de control)', unit: 's', min: 0.1, max: 0.5, step: 0.05 },
+      { key: 'samplesV', label: 'muestras de v', min: 3, max: 15, step: 1 },
+      { key: 'samplesW', label: 'muestras de ω', min: 5, max: 31, step: 2 },
+      { key: 'dMax', label: 'arco evaluado (tope de dist)', unit: 'm', min: 0.5, max: 5, step: 0.25 },
+    ],
+  },
+];
+
+/* ===== world.js ===== */
+/**
+ * world.js — Mapa de ocupación con campo de distancias.
+ *
+ * El mapa es una rejilla de celdas libres (0) u ocupadas (1). Para saber rápido
+ * a qué distancia está el obstáculo más cercano desde cualquier punto, se
+ * calcula una transformada de distancia euclídea exacta (Felzenszwalb y
+ * Huttenlocher, 2012) cada vez que el mapa cambia.
+ */
+
+const EDT_BIG = 1e10; // "infinito" finito, para no generar NaN en la transformada
+
+class OccupancyGrid {
+  constructor({ width, height, cell }) {
+    this.width = width; // m
+    this.height = height; // m
+    this.cell = cell; // m
+    this.cols = Math.round(width / cell);
+    this.rows = Math.round(height / cell);
+    this.cells = new Uint8Array(this.cols * this.rows); // 1 = ocupada
+    this.distance = new Float32Array(this.cols * this.rows); // m al obstáculo más cercano
+    this.version = 0; // aumenta con cada edición (lo usan las cachés de dibujo)
+    this.distanceDirty = true;
+  }
+
+  index(i, j) {
+    return j * this.cols + i;
+  }
+
+  inside(i, j) {
+    return i >= 0 && j >= 0 && i < this.cols && j < this.rows;
+  }
+
+  isOccupied(i, j) {
+    return !this.inside(i, j) || this.cells[this.index(i, j)] === 1;
+  }
+
+  /** Marca el mapa como modificado. */
+  touch() {
+    this.version++;
+    this.distanceDirty = true;
+  }
+
+  clear() {
+    this.cells.fill(0);
+    this.touch();
+  }
+
+  /** Pinta (occupied = true) o borra un disco de radio r (m) centrado en (x, y). */
+  paintDisc(x, y, r, occupied) {
+    const value = occupied ? 1 : 0;
+    const ci = Math.floor(x / this.cell);
+    const cj = Math.floor(y / this.cell);
+    const rc = Math.ceil(r / this.cell);
+    let changed = false;
+    for (let j = cj - rc; j <= cj + rc; j++) {
+      for (let i = ci - rc; i <= ci + rc; i++) {
+        if (!this.inside(i, j)) continue;
+        const cx = (i + 0.5) * this.cell;
+        const cy = (j + 0.5) * this.cell;
+        if (Math.hypot(cx - x, cy - y) > r) continue;
+        const k = this.index(i, j);
+        if (this.cells[k] !== value) {
+          this.cells[k] = value;
+          changed = true;
+        }
+      }
+    }
+    if (changed) this.touch();
+  }
+
+  /** Rellena un rectángulo [x0, x1] × [y0, y1] (m). */
+  fillRect(x0, y0, x1, y1) {
+    const i0 = Math.max(0, Math.floor(x0 / this.cell));
+    const i1 = Math.min(this.cols - 1, Math.ceil(x1 / this.cell) - 1);
+    const j0 = Math.max(0, Math.floor(y0 / this.cell));
+    const j1 = Math.min(this.rows - 1, Math.ceil(y1 / this.cell) - 1);
+    for (let j = j0; j <= j1; j++) {
+      for (let i = i0; i <= i1; i++) this.cells[this.index(i, j)] = 1;
+    }
+    this.touch();
+  }
+
+  /**
+   * Distancia libre (m) desde (x, y) al obstáculo o al borde del mapa más
+   * cercano. Fuera del mapa devuelve 0.
+   */
+  clearanceAt(x, y) {
+    if (x < 0 || y < 0 || x >= this.width || y >= this.height) return 0;
+    if (this.distanceDirty) this.computeDistanceField();
+    const i = Math.floor(x / this.cell);
+    const j = Math.floor(y / this.cell);
+    const toBorder = Math.min(x, y, this.width - x, this.height - y);
+    return Math.min(this.distance[this.index(i, j)], toBorder);
+  }
+
+  /** Transformada de distancia euclídea exacta: primero columnas, luego filas. */
+  computeDistanceField() {
+    const { cols, rows, cells } = this;
+    const n = Math.max(cols, rows);
+    const f = new Float64Array(n);
+    const out = new Float64Array(n);
+    const v = new Int32Array(n);
+    const z = new Float64Array(n + 1);
+    const d2 = new Float64Array(cols * rows); // distancias al cuadrado, en celdas²
+
+    for (let k = 0; k < cells.length; k++) d2[k] = cells[k] ? 0 : EDT_BIG;
+
+    for (let i = 0; i < cols; i++) {
+      for (let j = 0; j < rows; j++) f[j] = d2[this.index(i, j)];
+      edt1d(f, rows, out, v, z);
+      for (let j = 0; j < rows; j++) d2[this.index(i, j)] = out[j];
+    }
+    for (let j = 0; j < rows; j++) {
+      for (let i = 0; i < cols; i++) f[i] = d2[this.index(i, j)];
+      edt1d(f, cols, out, v, z);
+      for (let i = 0; i < cols; i++) d2[this.index(i, j)] = out[i];
+    }
+
+    // De centro de celda a centro de celda ocupada, menos media celda (borde del obstáculo)
+    for (let k = 0; k < d2.length; k++) {
+      this.distance[k] = Math.max(0, Math.sqrt(d2[k]) * this.cell - this.cell / 2);
+    }
+    this.distanceDirty = false;
+  }
+}
+
+/** Transformada de distancia 1D (envolvente inferior de parábolas). */
+function edt1d(f, n, out, v, z) {
+  let k = 0;
+  v[0] = 0;
+  z[0] = -Infinity;
+  z[1] = Infinity;
+  for (let q = 1; q < n; q++) {
+    let s = (f[q] + q * q - (f[v[k]] + v[k] * v[k])) / (2 * q - 2 * v[k]);
+    while (s <= z[k]) {
+      k--;
+      s = (f[q] + q * q - (f[v[k]] + v[k] * v[k])) / (2 * q - 2 * v[k]);
+    }
+    k++;
+    v[k] = q;
+    z[k] = s;
+    z[k + 1] = Infinity;
+  }
+  k = 0;
+  for (let q = 0; q < n; q++) {
+    while (z[k + 1] < q) k++;
+    out[q] = (q - v[k]) * (q - v[k]) + f[v[k]];
+  }
+}
+
+/* ===== scenarios.js ===== */
+/**
+ * scenarios.js — Escenarios predefinidos. Cada uno dibuja sus obstáculos en el
+ * mapa y devuelve la pose inicial del robot y el objetivo.
+ * Coordenadas en metros; el mundo mide 12 × 8 m; θ en radianes.
+ */
+
+const SCENARIOS = {
+  puerta: {
+    label: 'Puerta estrecha',
+    build(grid) {
+      grid.clear();
+      grid.fillRect(5.9, 0, 6.1, 3.45); // pared con un hueco de 1 m
+      grid.fillRect(5.9, 4.45, 6.1, 8);
+      return { start: { x: 1.5, y: 2.0, theta: 0.3 }, goal: { x: 10.5, y: 6.0 } };
+    },
+  },
+
+  pared: {
+    label: 'Pared frontal',
+    build(grid) {
+      grid.clear();
+      grid.fillRect(6.6, 2.2, 6.8, 5.8);
+      return { start: { x: 1.5, y: 4.0, theta: 0 }, goal: { x: 10.5, y: 4.0 } };
+    },
+  },
+
+  trampaU: {
+    label: 'Trampa en U (mínimo local)',
+    build(grid) {
+      grid.clear();
+      grid.fillRect(5.0, 5.4, 8.2, 5.6); // brazo superior
+      grid.fillRect(5.0, 2.4, 8.2, 2.6); // brazo inferior
+      grid.fillRect(8.0, 2.4, 8.2, 5.6); // fondo de la U
+      return { start: { x: 1.5, y: 4.0, theta: 0 }, goal: { x: 10.5, y: 4.0 } };
+    },
+  },
+
+  bosque: {
+    label: 'Obstáculos dispersos',
+    build(grid) {
+      grid.clear();
+      const discs = [
+        [3.0, 2.2, 0.45], [4.2, 4.6, 0.5], [2.6, 6.2, 0.4], [6.0, 1.6, 0.5],
+        [6.3, 3.9, 0.55], [5.6, 6.4, 0.45], [8.1, 2.8, 0.5], [8.4, 5.3, 0.5],
+        [9.8, 1.4, 0.4], [10.0, 4.2, 0.45], [7.2, 7.1, 0.35],
+      ];
+      for (const [x, y, r] of discs) grid.paintDisc(x, y, r, true);
+      return { start: { x: 1.0, y: 1.0, theta: 0.6 }, goal: { x: 11.0, y: 7.0 } };
+    },
+  },
+
+  vacio: {
+    label: 'Vacío (pinta tú)',
+    build(grid) {
+      grid.clear();
+      return { start: { x: 1.5, y: 4.0, theta: 0 }, goal: { x: 10.5, y: 4.0 } };
+    },
+  },
+};
+
+const DEFAULT_SCENARIO = 'puerta';
+
+/* ===== robot.js ===== */
+/**
+ * robot.js — Modelo cinemático de un robot diferencial (uniciclo).
+ *
+ * Con (v, ω) constantes el robot describe un arco de circunferencia de radio
+ * v/ω (una recta si ω = 0). Se integra de forma exacta, sin error acumulado.
+ */
+
+/** Pose tras moverse durante t segundos con (v, ω) constantes. */
+function integratePose(pose, v, w, t) {
+  const { x, y, theta } = pose;
+  if (Math.abs(w) < 1e-6) {
+    return { x: x + v * t * Math.cos(theta), y: y + v * t * Math.sin(theta), theta };
+  }
+  const r = v / w;
+  const theta2 = theta + w * t;
+  return {
+    x: x + r * (Math.sin(theta2) - Math.sin(theta)),
+    y: y - r * (Math.cos(theta2) - Math.cos(theta)),
+    theta: theta2,
+  };
+}
+
+/**
+ * Curvatura de (v, ω): el trozo de circunferencia de radio v/ω que seguiría
+ * el robot, muestreado cada `ds` metros hasta una longitud `length`.
+ * Solo depende de la forma del arco (ω/v), no del tiempo: así se mide la
+ * distancia libre "a lo largo de la curvatura", como en el paper.
+ *   · v = 0, ω = 0 → la recta hacia donde mira el robot (límite v → 0⁺).
+ *   · v = 0, ω ≠ 0 → giro sobre sí mismo: un solo punto.
+ * Cada pose lleva su recorrido s (m).
+ */
+function curvatureArc(pose, v, w, length, ds) {
+  const start = { x: pose.x, y: pose.y, theta: pose.theta, s: 0 };
+  if (v <= 1e-9 && Math.abs(w) > 1e-9) return [start];
+
+  const kappa = v <= 1e-9 ? 0 : w / v; // curvatura (1/m)
+  const poses = [start];
+  const n = Math.round(length / ds);
+  for (let k = 1; k <= n; k++) {
+    const s = k * ds;
+    // Recorrer s metros con curvatura κ equivale a integrar con v = 1, ω = κ durante s
+    const p = integratePose(pose, 1, kappa, s);
+    poses.push({ ...p, s });
+  }
+  return poses;
+}
+
+/** Aplica el comando (v, ω) durante dt y devuelve el nuevo estado del robot. */
+function advanceRobot(robot, command, dt) {
+  const pose = integratePose(robot, command.v, command.w, dt);
+  return { ...pose, v: command.v, w: command.w };
+}
+
+/* ===== dwa.js ===== */
+/**
+ * dwa.js — El algoritmo de la ventana dinámica (Fox, Burgard y Thrun, 1997).
+ *
+ *   1. Ventana dinámica: los (v, ω) que el robot puede alcanzar en el
+ *      siguiente Δt con sus aceleraciones máximas, dentro de los límites Vs.
+ *   2. Para cada (v, ω) muestreado se calculan tres criterios:
+ *        heading: cuánto mira al objetivo tras Δt y frenar,
+ *        dist:    distancia libre a lo largo de su curvatura (tope dMax),
+ *        vel:     la propia v.
+ *   3. Se descartan los no admisibles (los que no pueden frenar antes del
+ *      obstáculo), se normalizan los criterios y se puntúa
+ *          G(v, ω) = α·heading + β·dist + γ·vel
+ *   4. Se aplica el (v, ω) con mayor G.
+ */
+
+
+
+const CRITERIA = ['heading', 'dist', 'vel'];
+
+/* ------------------------------------------------------------------ */
+/* 1. Ventana dinámica                                                  */
+/* ------------------------------------------------------------------ */
+
+/** Velocidades alcanzables en Δt (V_d) intersecadas con las posibles (V_s). */
+function dynamicWindow(robot, p) {
+  return {
+    vLo: Math.max(0, robot.v - p.accV * p.dt),
+    vHi: Math.min(p.vMax, robot.v + p.accV * p.dt),
+    wLo: Math.max(-p.wMax, robot.w - p.accW * p.dt),
+    wHi: Math.min(p.wMax, robot.w + p.accW * p.dt),
+  };
+}
+
+/** Rejilla de nV × nW pares (v, ω) dentro de la ventana. */
+function sampleWindow(win, nV, nW) {
+  const samples = [];
+  for (let a = 0; a < nV; a++) {
+    for (let b = 0; b < nW; b++) {
+      samples.push({
+        v: linspaceAt(win.vLo, win.vHi, nV, a),
+        w: linspaceAt(win.wLo, win.wHi, nW, b),
+      });
+    }
+  }
+  return samples;
+}
+
+/* ------------------------------------------------------------------ */
+/* 2. Simulación y criterios                                           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Recorre la curvatura hasta el primer choque del disco del robot.
+ * Devuelve el índice de la pose de choque (-1 si no choca) y la distancia
+ * libre recorrida (con tope dMax; un giro sobre sí mismo sin choque vale dMax).
+ */
+function freeDistanceAlong(path, grid, p) {
+  for (let k = 0; k < path.length; k++) {
+    if (grid.clearanceAt(path[k].x, path[k].y) < p.radius) {
+      return { collisionIndex: k, dist: Math.min(p.dMax, path[k].s) };
+    }
+  }
+  return { collisionIndex: -1, dist: p.dMax };
+}
+
+/**
+ * Admisible: puede detenerse antes de recorrer `dist`.
+ * En el paper: v ≤ √(2·dist·a). Aquí se usa la versión para control discreto:
+ * el robot mantiene v durante Δt y después frena, así que necesita
+ *     v·Δt + v²/(2a) ≤ dist
+ */
+function isAdmissible(v, dist, p) {
+  return v * p.dt + (v * v) / (2 * p.accV) <= dist + 1e-9;
+}
+
+/**
+ * Pose en la que se mide el heading: la que alcanzaría tras aplicar (v, ω)
+ * durante Δt y frenar después (aproximado como Δt + tiempo de frenada,
+ * manteniendo ω), como en el paper.
+ */
+function headingPose(robot, v, w, p) {
+  const t = p.dt + v / p.accV;
+  return integratePose(robot, v, w, t);
+}
+
+/** La curvatura de (v, ω) que se evalúa y se dibuja. */
+function candidatePath(robot, v, w, p) {
+  return curvatureArc(robot, v, w, p.dMax, p.arcStep);
+}
+
+/** Evalúa un par (v, ω): sus criterios en bruto (sin normalizar). */
+function evaluateVelocity(robot, v, w, grid, goal, p) {
+  const path = candidatePath(robot, v, w, p);
+  const { collisionIndex, dist } = freeDistanceAlong(path, grid, p);
+  const poseH = headingPose(robot, v, w, p);
+  const bearing = Math.atan2(goal.y - poseH.y, goal.x - poseH.x);
+  const headingError = Math.abs(wrapAngle(bearing - poseH.theta)); // 0 = mira al objetivo
+
+  return {
+    v,
+    w,
+    path,
+    collisionIndex,
+    admissible: isAdmissible(v, dist, p),
+    headingPose: poseH,
+    headingError,
+    raw: { heading: Math.PI - headingError, dist, vel: v },
+    norm: null, // se rellena en scoreCandidates
+    G: 0,
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/* 3. Normalización y puntuación                                       */
+/* ------------------------------------------------------------------ */
+
+/** Rango [lo, hi] con el que se normaliza cada criterio. */
+function normalizationRanges(admissible, p) {
+  const theoreticalMax = { heading: Math.PI, dist: p.dMax, vel: p.vMax };
+  const ranges = {};
+  for (const k of CRITERIA) {
+    if (p.normalization === 'minmax' && admissible.length > 0) {
+      const values = admissible.map((c) => c.raw[k]);
+      ranges[k] = { lo: Math.min(...values), hi: Math.max(...values) };
+    } else {
+      ranges[k] = { lo: 0, hi: theoreticalMax[k] };
+    }
+  }
+  return ranges;
+}
+
+function criterionWeights(p) {
+  return { heading: p.alpha, dist: p.beta, vel: p.gamma };
+}
+
+/**
+ * Normaliza cada criterio a [0, 1], calcula G y devuelve el mejor admisible
+ * (o null si no hay ninguno). Si todos los candidatos empatan en un
+ * criterio, ese criterio vale 1 para todos: no discrimina.
+ */
+function scoreCandidates(candidates, p) {
+  const admissible = candidates.filter((c) => c.admissible);
+  const ranges = normalizationRanges(admissible, p);
+  const weights = criterionWeights(p);
+  let best = null;
+
+  for (const c of candidates) {
+    c.norm = {};
+    c.G = 0;
+    for (const k of CRITERIA) {
+      const { lo, hi } = ranges[k];
+      c.norm[k] = hi - lo > 1e-9 ? clamp((c.raw[k] - lo) / (hi - lo), 0, 1) : 1;
+      c.G += weights[k] * c.norm[k];
+    }
+    if (c.admissible && (best === null || c.G > best.G)) best = c;
+  }
+  return best;
+}
+
+/* ------------------------------------------------------------------ */
+/* 4. Un ciclo completo y el comando resultante                        */
+/* ------------------------------------------------------------------ */
+
+/** Un ciclo de DWA: ventana, candidatos evaluados y el mejor. */
+function planDwa(robot, grid, goal, p) {
+  const window = dynamicWindow(robot, p);
+  const candidates = sampleWindow(window, p.samplesV, p.samplesW).map(({ v, w }) =>
+    evaluateVelocity(robot, v, w, grid, goal, p),
+  );
+  const best = scoreCandidates(candidates, p);
+  return { window, candidates, best };
+}
+
+/**
+ * Comando a aplicar: el mejor candidato o, si ninguno es admisible,
+ * frenada de emergencia (frenar lo máximo posible en Δt).
+ */
+function chooseCommand(robot, best, p) {
+  if (best) return { v: best.v, w: best.w, emergency: false };
+  const v = Math.max(0, robot.v - p.accV * p.dt);
+  const dw = p.accW * p.dt;
+  const w = Math.abs(robot.w) <= dw ? 0 : robot.w - Math.sign(robot.w) * dw;
+  return { v, w, emergency: true };
+}
+
+/**
+ * Admisibilidad sobre todo V_s (no solo la ventana), en una rejilla nV × nW,
+ * para sombrear en el panel (v, ω) la zona en la que no daría tiempo a frenar.
+ */
+function admissibleRegion(robot, grid, p, nV = 28, nW = 44) {
+  const admissible = new Uint8Array(nV * nW);
+  for (let a = 0; a < nV; a++) {
+    const v = ((a + 0.5) / nV) * p.vMax;
+    for (let b = 0; b < nW; b++) {
+      const w = -p.wMax + ((b + 0.5) / nW) * 2 * p.wMax;
+      const { dist } = freeDistanceAlong(candidatePath(robot, v, w, p), grid, p);
+      admissible[a * nW + b] = isAdmissible(v, dist, p) ? 1 : 0;
+    }
+  }
+  return { nV, nW, admissible };
+}
+
+/* ===== colors.js ===== */
+/**
+ * colors.js — Colores del tema (leídos de las variables CSS, así los dibujos
+ * del canvas siguen el modo claro/oscuro) y escala de color de puntuaciones.
+ */
+
+
+/** Lee los colores del tema desde las variables CSS de :root. */
+function readTheme() {
+  const css = getComputedStyle(document.documentElement);
+  const get = (name) => css.getPropertyValue(name).trim();
+  return {
+    canvasBg: get('--canvas-bg'),
+    free: get('--free'),
+    obstacle: get('--obstacle'),
+    gridLine: get('--grid-line'),
+    ink: get('--ink'),
+    muted: get('--muted'),
+    robot: get('--robot'),
+    goal: get('--goal'),
+    best: get('--best'),
+    bad: get('--bad'),
+    window: get('--window'),
+    inadmissible: get('--inadmissible'),
+    rejected: get('--rejected'),
+    trail: get('--trail'),
+    scaleLo: hexToRgb(get('--scale-lo')),
+    scaleHi: hexToRgb(get('--scale-hi')),
+  };
+}
+
+function hexToRgb(hex) {
+  const h = hex.replace('#', '');
+  const full = h.length === 3 ? [...h].map((c) => c + c).join('') : h;
+  const n = parseInt(full, 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+/** Color de la escala secuencial para t ∈ [0, 1] (0 = peor, 1 = mejor). */
+function scaleColor(t, theme) {
+  const u = clamp(t, 0, 1);
+  const [r, g, b] = theme.scaleLo.map((lo, i) => Math.round(lerp(lo, theme.scaleHi[i], u)));
+  return `rgb(${r}, ${g}, ${b})`;
+}
+
+/**
+ * Valor en [0, 1] con el que se colorea cada candidato admisible:
+ *   'G'        → G reescalada entre el peor y el mejor de la ventana
+ *   criterio   → el criterio normalizado (heading, dist o vel)
+ * Devuelve un Map candidato → valor. Los no admisibles no tienen valor.
+ */
+function colorValues(candidates, colorBy) {
+  const admissible = candidates.filter((c) => c.admissible);
+  const values = new Map();
+  if (colorBy === 'G') {
+    const gs = admissible.map((c) => c.G);
+    const lo = Math.min(...gs);
+    const hi = Math.max(...gs);
+    for (const c of admissible) values.set(c, hi - lo > 1e-9 ? (c.G - lo) / (hi - lo) : 1);
+  } else {
+    for (const c of admissible) values.set(c, c.norm[colorBy]);
+  }
+  return values;
+}
+
+/* ===== canvas-view.js ===== */
+/**
+ * canvas-view.js — Base común de los dos paneles dibujados en canvas:
+ * ajusta la resolución a la pantalla (HiDPI) y ofrece utilidades de dibujo.
+ */
+
+class CanvasView {
+  constructor(canvas) {
+    this.canvas = canvas;
+    this.ctx = canvas.getContext('2d');
+    this.width = 0; // px CSS
+    this.height = 0; // px CSS
+  }
+
+  /** Ajusta el tamaño interno del canvas al tamaño con que se muestra. */
+  resize() {
+    const rect = this.canvas.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    this.width = rect.width;
+    this.height = rect.height;
+    this.canvas.width = Math.max(1, Math.round(rect.width * dpr));
+    this.canvas.height = Math.max(1, Math.round(rect.height * dpr));
+    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  clear(color) {
+    this.ctx.fillStyle = color;
+    this.ctx.fillRect(0, 0, this.width, this.height);
+  }
+
+  /** Polilínea a partir de puntos [x, y] en píxeles. */
+  polyline(points, { color, width = 2, dash = [], alpha = 1 }) {
+    if (points.length < 2) return;
+    const { ctx } = this;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    ctx.setLineDash(dash);
+    ctx.beginPath();
+    ctx.moveTo(points[0][0], points[0][1]);
+    for (let k = 1; k < points.length; k++) ctx.lineTo(points[k][0], points[k][1]);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  cross(x, y, size, color, width = 2) {
+    const { ctx } = this;
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(x - size, y - size);
+    ctx.lineTo(x + size, y + size);
+    ctx.moveTo(x - size, y + size);
+    ctx.lineTo(x + size, y - size);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  star(x, y, outer, inner, fill, stroke) {
+    const { ctx } = this;
+    ctx.save();
+    ctx.beginPath();
+    for (let k = 0; k < 10; k++) {
+      const r = k % 2 === 0 ? outer : inner;
+      const a = -Math.PI / 2 + (k * Math.PI) / 5;
+      const px = x + r * Math.cos(a);
+      const py = y + r * Math.sin(a);
+      if (k === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+    ctx.fillStyle = fill;
+    ctx.fill();
+    if (stroke) {
+      ctx.strokeStyle = stroke;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  text(str, x, y, { color, size = 12, align = 'left', baseline = 'alphabetic', weight = 500, font = 'var(--font-ui)' }) {
+    const { ctx } = this;
+    ctx.save();
+    ctx.fillStyle = color;
+    ctx.font = `${weight} ${size}px ${resolveFontFamily(font)}`;
+    ctx.textAlign = align;
+    ctx.textBaseline = baseline;
+    ctx.fillText(str, x, y);
+    ctx.restore();
+  }
+}
+
+/** El canvas no entiende var(--…): se resuelve la familia tipográfica desde CSS. */
+const fontCache = new Map();
+function resolveFontFamily(font) {
+  if (!font.startsWith('var(')) return font;
+  if (!fontCache.has(font)) {
+    const name = font.slice(4, -1).trim();
+    const family = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    fontCache.set(font, family || 'sans-serif');
+  }
+  return fontCache.get(font);
+}
+
+/* ===== render-world.js ===== */
+/**
+ * render-world.js — Panel del mundo: mapa, robot, objetivo, rastro y las
+ * curvaturas de todos los (v, ω) evaluados, coloreadas según su puntuación.
+ * El origen (0, 0) está abajo a la izquierda; y crece hacia arriba.
+ */
+
+
+
+
+class WorldView extends CanvasView {
+  constructor(canvas, grid) {
+    super(canvas);
+    this.grid = grid;
+    this.mapCanvas = document.createElement('canvas'); // imagen del mapa (1 px = 1 celda)
+    this.mapKey = ''; // versión del mapa + tema con que se generó la imagen
+    this.scale = 1; // px por metro
+    this.ox = 0;
+    this.oy = 0;
+  }
+
+  /* ---------- Coordenadas ---------- */
+
+  layout() {
+    const { grid } = this;
+    this.scale = Math.min(this.width / grid.width, this.height / grid.height);
+    this.ox = (this.width - grid.width * this.scale) / 2;
+    this.oy = (this.height - grid.height * this.scale) / 2;
+  }
+
+  toPx(x, y) {
+    return [this.ox + x * this.scale, this.oy + (this.grid.height - y) * this.scale];
+  }
+
+  toWorld(px, py) {
+    return { x: (px - this.ox) / this.scale, y: this.grid.height - (py - this.oy) / this.scale };
+  }
+
+  /** Candidato cuya curvatura pasa más cerca del punto (px, py), o null. */
+  candidateNear(px, py, candidates, maxPx = 10) {
+    let best = null;
+    let bestD = maxPx;
+    for (const c of candidates) {
+      for (const pose of visiblePath(c)) {
+        const [x, y] = this.toPx(pose.x, pose.y);
+        const d = Math.hypot(x - px, y - py);
+        if (d < bestD) {
+          bestD = d;
+          best = c;
+        }
+      }
+    }
+    return best;
+  }
+
+  /* ---------- Dibujo ---------- */
+
+  draw(scene) {
+    this.layout();
+    this.clear(scene.theme.canvasBg);
+    this.drawMap(scene.theme);
+    this.drawMetricGrid(scene.theme);
+    this.drawTrail(scene);
+    if (scene.plan) this.drawCandidates(scene);
+    this.drawGoal(scene);
+    this.drawRobot(scene);
+    if (scene.focus) this.drawHeadingGhost(scene);
+    if (scene.brush) this.drawBrush(scene);
+    this.drawScaleBar(scene.theme);
+  }
+
+  /** El mapa se rasteriza a una imagen pequeña y se escala sin suavizar. */
+  drawMap(theme) {
+    const { grid, mapCanvas } = this;
+    const key = `${grid.version}|${theme.free}|${theme.obstacle}`;
+    if (key !== this.mapKey) {
+      mapCanvas.width = grid.cols;
+      mapCanvas.height = grid.rows;
+      const mctx = mapCanvas.getContext('2d');
+      mctx.fillStyle = theme.free;
+      mctx.fillRect(0, 0, grid.cols, grid.rows);
+      mctx.fillStyle = theme.obstacle;
+      for (let j = 0; j < grid.rows; j++) {
+        for (let i = 0; i < grid.cols; i++) {
+          if (grid.cells[grid.index(i, j)]) mctx.fillRect(i, grid.rows - 1 - j, 1, 1);
+        }
+      }
+      this.mapKey = key;
+    }
+    const { ctx } = this;
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(mapCanvas, this.ox, this.oy, grid.width * this.scale, grid.height * this.scale);
+    ctx.restore();
+  }
+
+  /** Rejilla de 1 m. */
+  drawMetricGrid(theme) {
+    const { ctx, grid } = this;
+    ctx.save();
+    ctx.strokeStyle = theme.gridLine;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let x = 1; x < grid.width; x++) {
+      const [px] = this.toPx(x, 0);
+      ctx.moveTo(Math.round(px) + 0.5, this.oy);
+      ctx.lineTo(Math.round(px) + 0.5, this.oy + grid.height * this.scale);
+    }
+    for (let y = 1; y < grid.height; y++) {
+      const [, py] = this.toPx(0, y);
+      ctx.moveTo(this.ox, Math.round(py) + 0.5);
+      ctx.lineTo(this.ox + grid.width * this.scale, Math.round(py) + 0.5);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  drawTrail({ trail, theme }) {
+    this.polyline(
+      trail.map((p) => this.toPx(p.x, p.y)),
+      { color: theme.trail, width: 2.5, dash: [1, 6] },
+    );
+  }
+
+  /**
+   * Curvaturas evaluadas: primero las no admisibles (discontinuas), luego las
+   * admisibles de peor a mejor, para que las buenas queden encima.
+   */
+  drawCandidates({ plan, theme, colorBy, hover }) {
+    const values = colorValues(plan.candidates, colorBy);
+    const toPx = (p) => this.toPx(p.x, p.y);
+
+    for (const c of plan.candidates) {
+      if (c.admissible) continue;
+      this.polyline(visiblePath(c).map(toPx), { color: theme.rejected, width: 1.2, dash: [4, 4] });
+    }
+    const admissible = plan.candidates.filter((c) => c.admissible);
+    admissible.sort((a, b) => values.get(a) - values.get(b));
+    for (const c of admissible) {
+      this.polyline(visiblePath(c).map(toPx), { color: scaleColor(values.get(c), theme), width: 2 });
+    }
+
+    // Puntos de choque dentro del arco evaluado
+    for (const c of plan.candidates) {
+      if (c.collisionIndex < 0) continue;
+      const [x, y] = toPx(c.path[c.collisionIndex]);
+      this.cross(x, y, 3.5, theme.bad, 1.8);
+    }
+
+    // El elegido: halo ámbar con trazo oscuro encima
+    if (plan.best) {
+      const pts = visiblePath(plan.best).map(toPx);
+      this.polyline(pts, { color: theme.best, width: 9, alpha: 0.85 });
+      this.polyline(pts, { color: theme.ink, width: 2.5 });
+    }
+    if (hover && hover !== plan.best) {
+      const pts = visiblePath(hover).map(toPx);
+      this.polyline(pts, { color: theme.ink, width: 6, alpha: 0.25 });
+      this.polyline(pts, { color: theme.ink, width: 2 });
+    }
+  }
+
+  drawRobot({ robot, params, theme }) {
+    const { ctx } = this;
+    const [x, y] = this.toPx(robot.x, robot.y);
+    const r = params.radius * this.scale;
+    ctx.save();
+    ctx.globalAlpha = 0.3;
+    ctx.fillStyle = theme.robot;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, 2 * Math.PI);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = theme.robot;
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + r * Math.cos(robot.theta), y - r * Math.sin(robot.theta));
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  drawGoal({ goal, params, theme }) {
+    const { ctx } = this;
+    const [x, y] = this.toPx(goal.x, goal.y);
+    ctx.save();
+    ctx.strokeStyle = theme.goal;
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([3, 4]);
+    ctx.beginPath();
+    ctx.arc(x, y, params.goalTolerance * this.scale, 0, 2 * Math.PI);
+    ctx.stroke();
+    ctx.restore();
+    this.star(x, y, 11, 4.5, theme.goal);
+  }
+
+  /**
+   * Para el candidato enfocado: la pose en la que se mide el heading (robot
+   * fantasma) y el ángulo entre su orientación y la dirección al objetivo.
+   */
+  drawHeadingGhost({ focus, goal, params, theme }) {
+    const { ctx } = this;
+    const pose = focus.headingPose;
+    const [x, y] = this.toPx(pose.x, pose.y);
+    const [gx, gy] = this.toPx(goal.x, goal.y);
+    const r = params.radius * this.scale;
+    ctx.save();
+    ctx.strokeStyle = theme.ink;
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, 2 * Math.PI);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(gx, gy);
+    ctx.globalAlpha = 0.6;
+    ctx.stroke();
+    ctx.restore();
+
+    // Orientación prevista
+    const hx = x + 1.8 * r * Math.cos(pose.theta);
+    const hy = y - 1.8 * r * Math.sin(pose.theta);
+    this.polyline([[x, y], [hx, hy]], { color: theme.ink, width: 2.5 });
+    this.text(`Δθ = ${radToDeg(focus.headingError).toFixed(0)}°`, x + r + 6, y - r - 4, {
+      color: theme.ink,
+      size: 12,
+      weight: 600,
+      font: 'var(--font-mono)',
+    });
+  }
+
+  drawBrush({ brush, theme }) {
+    const { ctx } = this;
+    const [x, y] = this.toPx(brush.x, brush.y);
+    ctx.save();
+    ctx.strokeStyle = brush.erase ? theme.bad : theme.ink;
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([4, 3]);
+    ctx.beginPath();
+    ctx.arc(x, y, brush.r * this.scale, 0, 2 * Math.PI);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  drawScaleBar(theme) {
+    const [x0, y0] = this.toPx(0.3, 0.3);
+    const x1 = x0 + this.scale;
+    this.polyline([[x0, y0], [x1, y0]], { color: theme.ink, width: 3 });
+    this.text('1 m', (x0 + x1) / 2, y0 - 7, { color: theme.ink, size: 11, align: 'center', weight: 600 });
+  }
+}
+
+/** Tramo de la curvatura que se dibuja: hasta el choque, si lo hay. */
+function visiblePath(candidate) {
+  return candidate.collisionIndex < 0
+    ? candidate.path
+    : candidate.path.slice(0, candidate.collisionIndex + 1);
+}
+
+/* ===== render-velocity.js ===== */
+/**
+ * render-velocity.js — Panel del espacio de velocidades (v, ω).
+ *
+ *   · Rectángulo completo = V_s, las velocidades posibles del robot.
+ *   · Zona sombreada = no admisible (no daría tiempo a frenar).
+ *   · Recuadro verde = ventana dinámica, lo alcanzable en el siguiente Δt.
+ *   · Puntos = pares muestreados, coloreados según su puntuación.
+ * Convención: ω > 0 (giro a la izquierda) a la izquierda del eje.
+ */
+
+
+
+const MARGIN = { left: 50, right: 16, top: 14, bottom: 46 };
+
+class VelocityView extends CanvasView {
+  constructor(canvas) {
+    super(canvas);
+    this.params = null;
+    this.plot = { x0: 0, y0: 0, x1: 0, y1: 0 };
+  }
+
+  /* ---------- Coordenadas ---------- */
+
+  layout(params) {
+    this.params = params;
+    this.plot = {
+      x0: MARGIN.left,
+      y0: MARGIN.top,
+      x1: this.width - MARGIN.right,
+      y1: this.height - MARGIN.bottom,
+    };
+  }
+
+  toPx(v, w) {
+    const { x0, y0, x1, y1 } = this.plot;
+    const { vMax, wMax } = this.params;
+    return [x0 + ((wMax - w) / (2 * wMax)) * (x1 - x0), y1 - (v / vMax) * (y1 - y0)];
+  }
+
+  /** Muestra de la ventana más cercana al punto (px, py), o null. */
+  candidateNear(px, py, candidates, maxPx = 14) {
+    if (!this.params) return null;
+    let best = null;
+    let bestD = maxPx;
+    for (const c of candidates) {
+      const [x, y] = this.toPx(c.v, c.w);
+      const d = Math.hypot(x - px, y - py);
+      if (d < bestD) {
+        bestD = d;
+        best = c;
+      }
+    }
+    return best;
+  }
+
+  /* ---------- Dibujo ---------- */
+
+  draw(scene) {
+    this.layout(scene.params);
+    this.clear(scene.theme.canvasBg);
+    this.drawVs(scene);
+    if (scene.region) this.drawInadmissibleRegion(scene);
+    this.drawAxes(scene);
+    if (scene.plan) {
+      this.drawWindow(scene);
+      this.drawSamples(scene);
+    }
+    this.drawCurrentVelocity(scene);
+  }
+
+  drawVs({ theme }) {
+    const { ctx } = this;
+    const { x0, y0, x1, y1 } = this.plot;
+    ctx.save();
+    ctx.fillStyle = theme.free;
+    ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
+    ctx.strokeStyle = theme.muted;
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
+    ctx.restore();
+  }
+
+  drawInadmissibleRegion({ region, theme }) {
+    const { ctx } = this;
+    const { x0, y0, x1, y1 } = this.plot;
+    const cw = (x1 - x0) / region.nW;
+    const ch = (y1 - y0) / region.nV;
+    ctx.save();
+    ctx.fillStyle = theme.inadmissible;
+    for (let a = 0; a < region.nV; a++) {
+      for (let b = 0; b < region.nW; b++) {
+        if (region.admissible[a * region.nW + b]) continue;
+        // b crece con ω, y ω > 0 se dibuja a la izquierda
+        const x = x1 - (b + 1) * cw;
+        const y = y1 - (a + 1) * ch;
+        ctx.fillRect(x - 0.3, y - 0.3, cw + 0.6, ch + 0.6);
+      }
+    }
+    ctx.restore();
+  }
+
+  drawAxes({ params, theme }) {
+    const { ctx } = this;
+    const { x0, y0, x1, y1 } = this.plot;
+    const label = { color: theme.muted, size: 11, font: 'var(--font-mono)' };
+
+    // Eje ω = 0
+    const [xZero] = this.toPx(0, 0);
+    ctx.save();
+    ctx.strokeStyle = theme.gridLine;
+    ctx.setLineDash([3, 4]);
+    ctx.beginPath();
+    ctx.moveTo(xZero, y0);
+    ctx.lineTo(xZero, y1);
+    ctx.stroke();
+    ctx.restore();
+
+    // Marcas de v
+    for (const v of [0, params.vMax / 2, params.vMax]) {
+      const [, y] = this.toPx(v, 0);
+      this.text(v.toFixed(1), x0 - 8, y, { ...label, align: 'right', baseline: 'middle' });
+    }
+    // Marcas de ω
+    for (const w of [params.wMax, 0, -params.wMax]) {
+      const [x] = this.toPx(0, w);
+      const txt = w === 0 ? '0' : (w > 0 ? '+' : '−') + Math.abs(w).toFixed(1);
+      this.text(txt, x, y1 + 16, { ...label, align: 'center' });
+    }
+
+    this.text('ω (rad/s)', (x0 + x1) / 2, y1 + 36, { color: theme.ink, size: 12, align: 'center', weight: 600 });
+    this.text('← izquierda', x0, y1 + 36, { color: theme.muted, size: 11 });
+    this.text('derecha →', x1, y1 + 36, { color: theme.muted, size: 11, align: 'right' });
+
+    ctx.save();
+    ctx.translate(14, (y0 + y1) / 2);
+    ctx.rotate(-Math.PI / 2);
+    this.text('v (m/s)', 0, 0, { color: theme.ink, size: 12, align: 'center', baseline: 'middle', weight: 600 });
+    ctx.restore();
+  }
+
+  drawWindow({ plan, theme }) {
+    const { ctx } = this;
+    const { vLo, vHi, wLo, wHi } = plan.window;
+    const [xa, ya] = this.toPx(vHi, wHi);
+    const [xb, yb] = this.toPx(vLo, wLo);
+    const pad = 7;
+    ctx.save();
+    ctx.strokeStyle = theme.window;
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.roundRect(xa - pad, ya - pad, xb - xa + 2 * pad, yb - ya + 2 * pad, 6);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  drawSamples({ plan, theme, colorBy, hover, params }) {
+    const values = colorValues(plan.candidates, colorBy);
+    // Radio de los puntos según la separación entre muestras
+    const { vLo, vHi, wLo, wHi } = plan.window;
+    const [xa, ya] = this.toPx(vHi, wHi);
+    const [xb, yb] = this.toPx(vLo, wLo);
+    const gapX = Math.abs(xb - xa) / Math.max(1, params.samplesW - 1);
+    const gapY = Math.abs(yb - ya) / Math.max(1, params.samplesV - 1);
+    const r = Math.max(2.5, Math.min(6, 0.38 * Math.min(gapX || 99, gapY || 99)));
+    const { ctx } = this;
+
+    for (const c of plan.candidates) {
+      const [x, y] = this.toPx(c.v, c.w);
+      if (!c.admissible) {
+        this.cross(x, y, r * 0.7, theme.rejected, 1.5);
+        continue;
+      }
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, 2 * Math.PI);
+      ctx.fillStyle = scaleColor(values.get(c), theme);
+      ctx.fill();
+    }
+    if (plan.best) {
+      const [x, y] = this.toPx(plan.best.v, plan.best.w);
+      this.star(x, y, r + 7, r + 1, theme.best, theme.ink);
+    }
+    if (hover) {
+      const [x, y] = this.toPx(hover.v, hover.w);
+      ctx.save();
+      ctx.strokeStyle = theme.ink;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(x, y, r + 5, 0, 2 * Math.PI);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  /** Velocidad actual del robot: el centro de la ventana. */
+  drawCurrentVelocity({ robot, theme }) {
+    const { ctx } = this;
+    const [x, y] = this.toPx(robot.v, robot.w);
+    ctx.save();
+    ctx.strokeStyle = theme.robot;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x - 7, y);
+    ctx.lineTo(x + 7, y);
+    ctx.moveTo(x, y - 7);
+    ctx.lineTo(x, y + 7);
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
+/* ===== panel.js ===== */
+/**
+ * panel.js — Desglose de la puntuación del par (v, ω) enfocado: valor en bruto
+ * de cada criterio, su valor normalizado, la contribución ponderada y G.
+ */
+
+
+
+const CRITERION_INFO = {
+  heading: { name: 'heading', symbol: 'α', raw: (c) => `Δθ = ${radToDeg(c.headingError).toFixed(0)}°` },
+  dist: { name: 'dist', symbol: 'β', raw: (c) => `${c.raw.dist.toFixed(2)} m libres` },
+  vel: { name: 'vel', symbol: 'γ', raw: (c) => `${c.raw.vel.toFixed(2)} m/s` },
+};
+
+class BreakdownPanel {
+  constructor(root) {
+    this.root = root;
+    root.innerHTML = `
+      <div class="bd-head">
+        <span class="bd-title"></span>
+        <span class="bd-vw mono"></span>
+      </div>
+      <div class="bd-rows">
+        ${CRITERIA.map(
+          (k) => `
+          <div class="bd-row" data-criterion="${k}">
+            <span class="bd-name">${CRITERION_INFO[k].name}</span>
+            <span class="bd-raw mono"></span>
+            <span class="bd-bar"><i></i></span>
+            <span class="bd-contrib mono"></span>
+          </div>`,
+        ).join('')}
+      </div>
+      <div class="bd-total">
+        <span class="bd-name">G</span>
+        <span class="bd-stack">${CRITERIA.map((k) => `<i data-criterion="${k}"></i>`).join('')}</span>
+        <span class="bd-g mono"></span>
+      </div>
+      <p class="bd-note"></p>`;
+    this.el = {
+      title: root.querySelector('.bd-title'),
+      vw: root.querySelector('.bd-vw'),
+      rows: Object.fromEntries(CRITERIA.map((k) => [k, root.querySelector(`.bd-row[data-criterion="${k}"]`)])),
+      stack: Object.fromEntries(CRITERIA.map((k) => [k, root.querySelector(`.bd-stack i[data-criterion="${k}"]`)])),
+      g: root.querySelector('.bd-g'),
+      note: root.querySelector('.bd-note'),
+    };
+  }
+
+  /**
+   * @param candidate  el par a desglosar (o null)
+   * @param role       'best' | 'hover'
+   */
+  update(candidate, params, role, isBest) {
+    const { el } = this;
+    this.root.classList.toggle('is-empty', !candidate);
+    if (!candidate) {
+      el.title.textContent = 'Sin par admisible';
+      el.vw.textContent = '';
+      el.note.textContent = 'Ningún (v, ω) de la ventana permite frenar a tiempo: el robot frena al máximo.';
+      return;
+    }
+
+    el.title.textContent = role === 'hover' ? (isBest ? 'Par señalado (el elegido)' : 'Par señalado') : 'Par elegido';
+    el.vw.textContent = `v = ${candidate.v.toFixed(2)} m/s · ω = ${candidate.w.toFixed(2)} rad/s`;
+
+    const weights = criterionWeights(params);
+    const weightSum = CRITERIA.reduce((s, k) => s + weights[k], 0) || 1;
+    for (const k of CRITERIA) {
+      const row = el.rows[k];
+      const norm = candidate.norm[k];
+      const contrib = weights[k] * norm;
+      row.querySelector('.bd-raw').textContent = CRITERION_INFO[k].raw(candidate);
+      row.querySelector('.bd-bar i').style.width = `${(norm * 100).toFixed(1)}%`;
+      row.querySelector('.bd-contrib').textContent =
+        `${CRITERION_INFO[k].symbol} ${weights[k].toFixed(2)} × ${norm.toFixed(2)} = ${contrib.toFixed(2)}`;
+      el.stack[k].style.width = `${((contrib / weightSum) * 100).toFixed(1)}%`;
+    }
+    el.g.textContent = candidate.G.toFixed(3);
+    el.note.textContent = noteFor(candidate, params);
+  }
+}
+
+function noteFor(c, p) {
+  const needed = c.v * p.dt + (c.v * c.v) / (2 * p.accV);
+  if (!c.admissible) {
+    return `No admisible: para frenar necesita ${needed.toFixed(2)} m y solo tiene ${c.raw.dist.toFixed(2)} m libres.`;
+  }
+  if (c.v < 1e-6 && Math.abs(c.w) > 1e-6) return 'Giro sobre sí mismo: no avanza, solo reorienta.';
+  if (c.collisionIndex >= 0) {
+    return `Su curvatura choca a ${c.raw.dist.toFixed(2)} m, pero puede frenar antes (necesita ${needed.toFixed(2)} m).`;
+  }
+  return `Sin obstáculos en los ${p.dMax.toFixed(1)} m de curvatura evaluados.`;
+}
+
+/* ===== ui.js ===== */
+/**
+ * ui.js — Construcción y enlace de los controles HTML. No contiene lógica del
+ * algoritmo: solo traduce acciones del usuario en llamadas a funciones de main.
+ */
+
+/**
+ * Crea un deslizador por parámetro a partir de PARAM_SPECS.
+ * Devuelve sync(), que vuelve a leer `params` y actualiza los controles.
+ */
+function buildParamControls(container, specs, params, onChange) {
+  const inputs = [];
+  for (const group of specs) {
+    const fieldset = document.createElement('fieldset');
+    fieldset.innerHTML = `<legend>${group.group}</legend>`;
+    for (const spec of group.items) {
+      const id = `param-${spec.key}`;
+      const row = document.createElement('div');
+      row.className = 'param';
+      row.innerHTML = `
+        <label for="${id}">${spec.label}</label>
+        <output for="${id}" class="mono"></output>
+        <input type="range" id="${id}" min="${spec.min}" max="${spec.max}" step="${spec.step}">`;
+      const input = row.querySelector('input');
+      const output = row.querySelector('output');
+      const show = () => {
+        const decimals = spec.step >= 1 ? 0 : spec.step >= 0.1 ? 1 : 2;
+        output.textContent = `${Number(params[spec.key]).toFixed(decimals)}${spec.unit ? ' ' + spec.unit : ''}`;
+      };
+      input.addEventListener('input', () => {
+        params[spec.key] = Number(input.value);
+        show();
+        onChange(spec.key);
+      });
+      inputs.push({ input, spec, show });
+      fieldset.appendChild(row);
+    }
+    container.appendChild(fieldset);
+  }
+  const sync = () => {
+    for (const { input, spec, show } of inputs) {
+      input.value = params[spec.key];
+      show();
+    }
+  };
+  sync();
+  return sync;
+}
+
+/** Grupo de botones excluyentes (data-value). Llama a onChange con el valor. */
+function bindToggleGroup(container, onChange) {
+  const buttons = [...container.querySelectorAll('button[data-value]')];
+  const select = (value) => {
+    for (const b of buttons) b.setAttribute('aria-pressed', String(b.dataset.value === value));
+    onChange(value);
+  };
+  for (const b of buttons) b.addEventListener('click', () => select(b.dataset.value));
+  return select;
+}
+
+/**
+ * Ratón / dedo sobre un canvas. Los manejadores reciben la posición en px
+ * relativa al canvas.
+ *   onDown(px, py), onDrag(px, py), onUp(), onHover(px, py), onLeave()
+ */
+function bindPointer(canvas, handlers) {
+  let dragging = false;
+  const local = (e) => {
+    const rect = canvas.getBoundingClientRect();
+    return [e.clientX - rect.left, e.clientY - rect.top];
+  };
+  canvas.addEventListener('pointerdown', (e) => {
+    dragging = true;
+    canvas.setPointerCapture(e.pointerId);
+    handlers.onDown?.(...local(e));
+  });
+  canvas.addEventListener('pointermove', (e) => {
+    if (dragging) handlers.onDrag?.(...local(e));
+    else handlers.onHover?.(...local(e));
+  });
+  const end = (e) => {
+    if (!dragging) return;
+    dragging = false;
+    if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
+    handlers.onUp?.();
+  };
+  canvas.addEventListener('pointerup', end);
+  canvas.addEventListener('pointercancel', end);
+  canvas.addEventListener('pointerleave', () => {
+    if (!dragging) handlers.onLeave?.();
+  });
+}
+
+/** Atajos de teclado, ignorados mientras se escribe en un control. */
+function bindKeys(map) {
+  window.addEventListener('keydown', (e) => {
+    const tag = document.activeElement?.tagName;
+    if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+    const action = map[e.key];
+    if (action) {
+      e.preventDefault();
+      action();
+    }
+  });
+}
+
+/* ===== main.js ===== */
+/**
+ * main.js — Estado de la aplicación y bucle principal. Une el algoritmo
+ * (dwa.js), el mundo (world.js) y las vistas (render-*.js, panel.js).
+ *
+ * Flujo de un paso:
+ *   el plan actual ya está dibujado → se aplica su mejor (v, ω) durante Δt
+ *   → el robot se mueve → se calcula y dibuja el plan del nuevo estado.
+ */
+
+
+
+
+
+
+
+
+
+
+
+const NO_PROGRESS_STEPS = 60; // pasos sin acercarse al objetivo → se considera atascado
+
+/* ------------------------------------------------------------------ */
+/* Estado                                                              */
+/* ------------------------------------------------------------------ */
+
+const params = { ...DEFAULT_PARAMS };
+const grid = new OccupancyGrid(WORLD_SIZE);
+
+const app = {
+  start: null, // pose inicial {x, y, theta}
+  goal: null, // {x, y}
+  robot: null, // {x, y, theta, v, w}
+  trail: [],
+  plan: null, // {window, candidates, best}
+  region: null, // admisibilidad sobre todo V_s
+  step: 0,
+  status: 'ready', // ready | running | goal | stuck
+  emergency: false,
+  playing: false,
+  stepsPerSecond: 4,
+  bestGoalDistance: Infinity,
+  stepsWithoutProgress: 0,
+  tool: 'paint', // paint | erase | robot | goal
+  brushRadius: 0.3,
+  brush: null, // previsualización del pincel
+  colorBy: 'G',
+  hover: null, // candidato señalado con el ratón
+};
+
+/* ------------------------------------------------------------------ */
+/* Vistas                                                              */
+/* ------------------------------------------------------------------ */
+
+const dom = {
+  worldCanvas: document.getElementById('world-canvas'),
+  velocityCanvas: document.getElementById('velocity-canvas'),
+  status: document.getElementById('status'),
+  stepCount: document.getElementById('step-count'),
+  playButton: document.getElementById('btn-play'),
+  stepButton: document.getElementById('btn-step'),
+  resetButton: document.getElementById('btn-reset'),
+  clearButton: document.getElementById('btn-clear'),
+  scenarioSelect: document.getElementById('scenario'),
+  colorBySelect: document.getElementById('color-by'),
+  normalizationSelect: document.getElementById('normalization'),
+  speedInput: document.getElementById('speed'),
+  speedOutput: document.getElementById('speed-out'),
+  brushInput: document.getElementById('brush'),
+  brushOutput: document.getElementById('brush-out'),
+};
+
+const worldView = new WorldView(dom.worldCanvas, grid);
+const velocityView = new VelocityView(dom.velocityCanvas);
+const breakdown = new BreakdownPanel(document.getElementById('breakdown'));
+
+/* ------------------------------------------------------------------ */
+/* Acciones                                                            */
+/* ------------------------------------------------------------------ */
+
+function loadScenario(name) {
+  const { start, goal } = SCENARIOS[name].build(grid);
+  app.start = start;
+  app.goal = goal;
+  resetRun();
+}
+
+/** Devuelve el robot a la pose inicial (conserva mapa y objetivo). */
+function resetRun() {
+  app.playing = false;
+  app.robot = { ...app.start, v: 0, w: 0 };
+  app.trail = [{ x: app.start.x, y: app.start.y }];
+  app.step = 0;
+  app.status = 'ready';
+  app.emergency = false;
+  resetProgress();
+  setPlaying(false);
+  replan();
+}
+
+function resetProgress() {
+  app.bestGoalDistance = Infinity;
+  app.stepsWithoutProgress = 0;
+}
+
+/** Recalcula el plan para el estado actual (sin mover el robot). */
+function replan() {
+  app.plan = planDwa(app.robot, grid, app.goal, params);
+  app.region = admissibleRegion(app.robot, grid, params);
+  if (app.hover && !app.plan.candidates.includes(app.hover)) app.hover = null;
+  requestRender();
+}
+
+/** Aplica el mejor (v, ω) durante Δt y planifica de nuevo. */
+function stepOnce() {
+  if (app.status === 'goal' || app.status === 'stuck') return;
+  const command = chooseCommand(app.robot, app.plan.best, params);
+  app.emergency = command.emergency;
+  app.robot = advanceRobot(app.robot, command, params.dt);
+  app.trail.push({ x: app.robot.x, y: app.robot.y });
+  app.step++;
+  app.status = 'running';
+  app.hover = null;
+  checkProgress();
+  replan();
+}
+
+function checkProgress() {
+  const d = Math.hypot(app.goal.x - app.robot.x, app.goal.y - app.robot.y);
+  if (d <= params.goalTolerance) {
+    app.status = 'goal';
+    setPlaying(false);
+    return;
+  }
+  if (d < app.bestGoalDistance - 0.05) {
+    app.bestGoalDistance = d;
+    app.stepsWithoutProgress = 0;
+  } else if (++app.stepsWithoutProgress >= NO_PROGRESS_STEPS) {
+    app.status = 'stuck';
+    setPlaying(false);
+  }
+}
+
+/* ---------- Reproducción continua ---------- */
+
+let lastTime = 0;
+let accumulator = 0;
+
+function setPlaying(on) {
+  app.playing = on && app.status !== 'goal' && app.status !== 'stuck';
+  dom.playButton.textContent = app.playing ? 'Pausa' : 'Reproducir';
+  dom.playButton.setAttribute('aria-pressed', String(app.playing));
+  if (app.playing) {
+    lastTime = performance.now();
+    accumulator = 0;
+    requestAnimationFrame(tick);
+  }
+  updateStatus();
+}
+
+function tick(now) {
+  if (!app.playing) return;
+  accumulator += (now - lastTime) / 1000;
+  lastTime = now;
+  const period = 1 / app.stepsPerSecond;
+  let steps = 0;
+  while (accumulator >= period && app.playing && steps < 5) {
+    stepOnce();
+    accumulator -= period;
+    steps++;
+  }
+  requestAnimationFrame(tick);
+}
+
+/* ------------------------------------------------------------------ */
+/* Dibujo                                                              */
+/* ------------------------------------------------------------------ */
+
+let renderQueued = false;
+function requestRender() {
+  if (renderQueued) return;
+  renderQueued = true;
+  requestAnimationFrame(() => {
+    renderQueued = false;
+    render();
+  });
+}
+
+function render() {
+  const theme = readTheme();
+  const focus = app.hover ?? app.plan?.best ?? null;
+  const scene = {
+    theme,
+    params,
+    robot: app.robot,
+    goal: app.goal,
+    trail: app.trail,
+    plan: app.plan,
+    region: app.region,
+    colorBy: app.colorBy,
+    hover: app.hover,
+    focus,
+    brush: app.brush,
+  };
+  worldView.draw(scene);
+  velocityView.draw(scene);
+  breakdown.update(focus, params, app.hover ? 'hover' : 'best', focus === app.plan?.best);
+  updateStatus();
+}
+
+const STATUS_TEXT = {
+  ready: 'Listo. Pulsa «Paso» para aplicar el par elegido durante Δt.',
+  running: 'Navegando.',
+  goal: 'Objetivo alcanzado.',
+  stuck: `Sin acercarse al objetivo en ${NO_PROGRESS_STEPS} pasos: probablemente un mínimo local.`,
+};
+
+function updateStatus() {
+  let text = STATUS_TEXT[app.status];
+  if (app.status === 'running' && app.emergency) text = 'Ningún par admisible: frenada de emergencia.';
+  dom.status.textContent = text;
+  dom.status.dataset.state = app.emergency && app.status === 'running' ? 'warning' : app.status;
+  const t = app.step * params.dt;
+  dom.stepCount.textContent = `paso ${app.step} · t = ${t.toFixed(2)} s · v = ${app.robot.v.toFixed(2)} m/s · ω = ${app.robot.w.toFixed(2)} rad/s`;
+  dom.stepButton.disabled = app.status === 'goal' || app.status === 'stuck';
+}
+
+/* ------------------------------------------------------------------ */
+/* Interacción                                                         */
+/* ------------------------------------------------------------------ */
+
+function bindWorldInteraction() {
+  const toWorld = (px, py) => worldView.toWorld(px, py);
+  let robotDragOrigin = null;
+
+  const paintAt = (px, py) => {
+    const { x, y } = toWorld(px, py);
+    grid.paintDisc(x, y, app.brushRadius, app.tool === 'paint');
+    app.brush = { x, y, r: app.brushRadius, erase: app.tool === 'erase' };
+    replan();
+  };
+
+  bindPointer(dom.worldCanvas, {
+    onDown(px, py) {
+      const p = toWorld(px, py);
+      if (app.tool === 'paint' || app.tool === 'erase') paintAt(px, py);
+      else if (app.tool === 'robot') {
+        robotDragOrigin = p;
+        app.start = { x: p.x, y: p.y, theta: app.start.theta };
+        resetRun();
+      } else if (app.tool === 'goal') {
+        app.goal = { x: p.x, y: p.y };
+        if (app.status === 'goal' || app.status === 'stuck') app.status = 'ready';
+        resetProgress();
+        replan();
+      }
+    },
+    onDrag(px, py) {
+      const p = toWorld(px, py);
+      if (app.tool === 'paint' || app.tool === 'erase') paintAt(px, py);
+      else if (app.tool === 'robot' && robotDragOrigin) {
+        // Arrastrar fija la orientación inicial
+        const theta = Math.atan2(p.y - robotDragOrigin.y, p.x - robotDragOrigin.x);
+        app.start = { ...app.start, theta };
+        resetRun();
+      } else if (app.tool === 'goal') {
+        app.goal = { x: p.x, y: p.y };
+        replan();
+      }
+    },
+    onUp() {
+      robotDragOrigin = null;
+    },
+    onHover(px, py) {
+      const { x, y } = toWorld(px, py);
+      app.brush = app.tool === 'paint' || app.tool === 'erase'
+        ? { x, y, r: app.brushRadius, erase: app.tool === 'erase' }
+        : null;
+      app.hover = app.plan ? worldView.candidateNear(px, py, app.plan.candidates) : null;
+      requestRender();
+    },
+    onLeave() {
+      app.brush = null;
+      app.hover = null;
+      requestRender();
+    },
+  });
+}
+
+function bindVelocityInteraction() {
+  bindPointer(dom.velocityCanvas, {
+    onHover(px, py) {
+      app.hover = app.plan ? velocityView.candidateNear(px, py, app.plan.candidates) : null;
+      requestRender();
+    },
+    onLeave() {
+      app.hover = null;
+      requestRender();
+    },
+  });
+}
+
+function bindControls() {
+  dom.stepButton.addEventListener('click', () => {
+    setPlaying(false);
+    stepOnce();
+  });
+  dom.playButton.addEventListener('click', () => setPlaying(!app.playing));
+  dom.resetButton.addEventListener('click', resetRun);
+  dom.clearButton.addEventListener('click', () => {
+    grid.clear();
+    replan();
+  });
+
+  for (const [key, s] of Object.entries(SCENARIOS)) {
+    dom.scenarioSelect.add(new Option(s.label, key));
+  }
+  dom.scenarioSelect.value = DEFAULT_SCENARIO;
+  dom.scenarioSelect.addEventListener('change', () => loadScenario(dom.scenarioSelect.value));
+
+  dom.colorBySelect.addEventListener('change', () => {
+    app.colorBy = dom.colorBySelect.value;
+    requestRender();
+  });
+  dom.normalizationSelect.value = params.normalization;
+  dom.normalizationSelect.addEventListener('change', () => {
+    params.normalization = dom.normalizationSelect.value;
+    replan();
+  });
+
+  const showSpeed = () => (dom.speedOutput.textContent = `${app.stepsPerSecond} pasos/s`);
+  dom.speedInput.value = app.stepsPerSecond;
+  dom.speedInput.addEventListener('input', () => {
+    app.stepsPerSecond = Number(dom.speedInput.value);
+    showSpeed();
+  });
+  showSpeed();
+
+  const showBrush = () => (dom.brushOutput.textContent = `${app.brushRadius.toFixed(2)} m`);
+  dom.brushInput.value = app.brushRadius;
+  dom.brushInput.addEventListener('input', () => {
+    app.brushRadius = Number(dom.brushInput.value);
+    showBrush();
+  });
+  showBrush();
+
+  bindToggleGroup(document.getElementById('tools'), (tool) => {
+    app.tool = tool;
+    dom.worldCanvas.dataset.tool = tool;
+  })('paint');
+
+  buildParamControls(document.getElementById('param-controls'), PARAM_SPECS, params, () => replan());
+
+  bindKeys({
+    ' ': () => setPlaying(!app.playing),
+    ArrowRight: () => {
+      setPlaying(false);
+      stepOnce();
+    },
+    r: resetRun,
+  });
+}
+
+function bindResizeAndTheme() {
+  const resize = () => {
+    worldView.resize();
+    velocityView.resize();
+    render();
+  };
+  new ResizeObserver(resize).observe(dom.worldCanvas);
+  new ResizeObserver(resize).observe(dom.velocityCanvas);
+  // Re-dibujar si cambia el tema (preferencia del sistema o atributo data-theme)
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', requestRender);
+  new MutationObserver(requestRender).observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ['data-theme', 'class'],
+  });
+}
+
+/* ------------------------------------------------------------------ */
+/* Arranque                                                            */
+/* ------------------------------------------------------------------ */
+
+bindControls();
+bindWorldInteraction();
+bindVelocityInteraction();
+loadScenario(DEFAULT_SCENARIO);
+bindResizeAndTheme();
+})();
+</script>
+</body>
+</html>

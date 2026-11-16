@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Ventana dinámica</title>
+  <meta name="claude:viewport-fit-sides" content="cover">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <h1>Ventana dinámica</h1>
+      <p>El DWA de Fox, Burgard y Thrun (1997), paso a paso: de las velocidades alcanzables en Δt se elige la que maximiza
+        <span class="mono">G(v, ω) = α·heading + β·dist + γ·vel</span></p>
+    </div>
+    <div class="run" role="group" aria-label="Ejecución">
+      <button id="btn-step" class="primary" type="button">Paso ▸</button>
+      <button id="btn-play" type="button" aria-pressed="false">Reproducir</button>
+      <button id="btn-reset" type="button">Reiniciar</button>
+      <label class="inline-range" for="speed">velocidad
+        <input id="speed" type="range" min="1" max="20" step="1">
+        <output id="speed-out" for="speed" class="mono"></output>
+      </label>
+    </div>
+  </header>
+
+  <div class="statusbar">
+    <span id="status" data-state="ready"></span>
+    <span id="step-count" class="mono"></span>
+  </div>
+
+  <details class="panel explain" id="explain">
+    <summary>Cómo leer la demo</summary>
+    <div class="explain-grid">
+      <section>
+        <h3>En cada paso</h3>
+        <ol>
+          <li>Se calcula la <strong>ventana dinámica</strong>: los (v, ω) que el robot puede alcanzar en el siguiente Δt con sus aceleraciones máximas.</li>
+          <li>Se muestrea la ventana y cada par se puntúa con <span class="mono">G = α·heading + β·dist + γ·vel</span>.</li>
+          <li>El robot aplica el par con mayor G <strong>solo durante Δt</strong> y en el siguiente paso vuelve a evaluarlo todo desde la nueva posición.</li>
+        </ol>
+      </section>
+
+      <section>
+        <h3>Qué se dibuja para cada criterio</h3>
+        <dl>
+          <dt class="c-dist">dist → las curvaturas</dt>
+          <dd>Cada (v, ω) define una circunferencia de radio v/ω. Se recorre una longitud fija (el «arco evaluado», 2 m) y dist es lo que se avanza hasta el primer obstáculo (✕), o el tope si no choca. Con ese dist se decide también si el par es <em>admisible</em>: si da tiempo a frenar, v·Δt + v²/(2a) ≤ dist.</dd>
+          <dt class="c-heading">heading → el robot fantasma</dt>
+          <dd>Es la pose a la que llegaría aplicando el par durante Δt y frenando después. Está sobre la misma curvatura. heading es π − Δθ, donde Δθ es el ángulo entre hacia dónde miraría y la dirección al objetivo.</dd>
+          <dt class="c-vel">vel → la altura en el panel (v, ω)</dt>
+          <dd>Es la propia v; no tiene dibujo en el mundo.</dd>
+        </dl>
+      </section>
+
+      <section>
+        <h3>Para no confundirse</h3>
+        <ul>
+          <li>La curvatura completa <strong>no es el camino que seguirá el robot</strong>: solo recorre su primer trozo (Δt). Sirve para preguntar «si siguiera girando así, ¿cuánto espacio libre tendría?».</li>
+          <li>El <strong>color</strong> de curvaturas y puntos es la puntuación elegida en «colorear por» (G por defecto), no dist.</li>
+          <li>dist se mide por curvatura y no por tiempo: un par lento simulado unos segundos casi no avanza y «no ve» la pared que tiene delante, así que pararse parecería seguro. Delante de un obstáculo la elección es entre pararse o girar sobre sí mismo (las dos con v = 0), y solo dist puede inclinar la balanza.</li>
+          <li>Cada criterio se normaliza a [0, 1] antes de ponderarlo: con min-max sobre los pares admisibles de la ventana, o dividiendo por su máximo teórico.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h3>Cosas para probar</h3>
+        <ul>
+          <li><strong>Trampa en U:</strong> el robot entra y se queda atascado. Es un mínimo local; el DWA solo mira a corto plazo y necesita un planificador global.</li>
+          <li><strong>Aceleraciones:</strong> súbelas y la ventana crece hasta casi cubrir V<sub>s</sub>; bájalas y el robot tiene que empezar a girar mucho antes de la pared.</li>
+          <li><strong>Arco evaluado por debajo de la distancia de frenada</strong> (1,25 m con los valores por defecto): el robot no pasa de cierta velocidad ni en el mapa vacío.</li>
+          <li><strong>Pesos:</strong> con α alto el robot se planta delante de los obstáculos alineados con el objetivo.</li>
+        </ul>
+      </section>
+    </div>
+  </details>
+
+  <main class="layout">
+    <section class="panel world-panel" aria-labelledby="world-title">
+      <div class="panel-head">
+        <h2 id="world-title">Mundo <span class="unit">12 × 8 m</span></h2>
+        <div class="toolbar">
+          <div id="tools" class="segmented" role="group" aria-label="Herramienta">
+            <button type="button" data-value="paint">Obstáculo</button>
+            <button type="button" data-value="erase">Borrar</button>
+            <button type="button" data-value="robot">Robot</button>
+            <button type="button" data-value="goal">Objetivo</button>
+          </div>
+          <label class="inline-range" for="brush">pincel
+            <input id="brush" type="range" min="0.1" max="0.8" step="0.05">
+            <output id="brush-out" for="brush" class="mono"></output>
+          </label>
+          <select id="scenario" aria-label="Escenario"></select>
+          <button id="btn-clear" class="ghost" type="button">Vaciar mapa</button>
+        </div>
+      </div>
+      <div class="canvas-frame world-frame">
+        <canvas id="world-canvas" data-tool="paint" aria-label="Mapa con el robot, el objetivo y las curvaturas evaluadas"></canvas>
+      </div>
+      <ul class="legend">
+        <li><i class="sw sw-scale"></i>curvatura admisible (color: peor → mejor)</li>
+        <li><i class="sw sw-dash"></i>no admisible</li>
+        <li><i class="sw sw-cross">✕</i>choque en la curvatura</li>
+        <li><i class="sw sw-best"></i>par elegido</li>
+        <li><i class="sw sw-ghost"></i>pose donde se mide el heading</li>
+      </ul>
+      <p class="hint">Robot: haz clic para colocarlo y arrastra para orientarlo. Pasa el ratón por una curvatura para ver su puntuación. Teclado: espacio = reproducir, → = paso, R = reiniciar.</p>
+    </section>
+
+    <aside class="side">
+      <section class="panel" aria-labelledby="velocity-title">
+        <div class="panel-head">
+          <h2 id="velocity-title">Espacio de velocidades (v, ω)</h2>
+          <label class="inline-select" for="color-by">colorear por
+            <select id="color-by">
+              <option value="G">G (total)</option>
+              <option value="heading">heading</option>
+              <option value="dist">dist</option>
+              <option value="vel">vel</option>
+            </select>
+          </label>
+        </div>
+        <div class="canvas-frame velocity-frame">
+          <canvas id="velocity-canvas" aria-label="Espacio de velocidades con la ventana dinámica"></canvas>
+        </div>
+        <ul class="legend">
+          <li><i class="sw sw-vs"></i><span>V<sub>s</sub>: posibles</span></li>
+          <li><i class="sw sw-shade"></i>no admisibles</li>
+          <li><i class="sw sw-window"></i>ventana dinámica</li>
+          <li><i class="sw sw-plus">+</i>velocidad actual</li>
+          <li><i class="sw sw-star">★</i>mejor G</li>
+        </ul>
+      </section>
+
+      <section class="panel breakdown" id="breakdown" aria-live="polite"></section>
+    </aside>
+
+    <section class="panel params" aria-labelledby="params-title">
+      <div class="panel-head">
+        <h2 id="params-title">Parámetros</h2>
+        <label class="inline-select" for="normalization">normalización
+          <select id="normalization">
+            <option value="minmax">min-max sobre la ventana</option>
+            <option value="fixed">dividir por el máximo teórico</option>
+          </select>
+        </label>
+      </div>
+      <div id="param-controls" class="param-grid"></div>
+    </section>
+  </main>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
