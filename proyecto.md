@@ -58,6 +58,7 @@ En este apartado se valorarán:
 
 - Los resultados obtenidos en función de la dificultad de la tarea. Es decir, una tarea compleja de desarrollar y que no funciona del todo correctamente puede tener la misma valoración que otra más simple que sí lo hace.
 - Se valorará también la originalidad de la tarea y el hecho de que esta use conceptos y técnicas que no hayamos visto en la asignatura (por ejemplo, *deep learning* para reconocer objetos, algoritmos de mapeado distintos del usado en la práctica 2, etc.)
+- Que la secuenciación de subtareas del proyecto se realice con una máquina de estados finitos o un *behavior tree* como se explicará en la clase de teoría del miércoles 18 de noviembre
 - La limpieza y estructuración del código fuente.
 - Que el proyecto esté subido a Github con instrucciones de uso y listo para usar en la medida de lo posible.
 - Que el proyecto, o partes de él, se hayan probado en los robots del laboratorio.
