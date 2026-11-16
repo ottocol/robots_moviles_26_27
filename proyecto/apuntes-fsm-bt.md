@@ -402,7 +402,7 @@ source install/setup.bash
 
 ### El mundo
 
-El paquete incluye el mundo para mvsim `world/buscar_rojo.world.xml` y su mapa ya construido (`world/mapa.yaml`). Es una sala de 30 × 30 m con algunas paredes interiores y tres papeleras. El robot empieza en (-10, 10) mirando hacia abajo (-90º) y hay una **caja roja** en (-13, 8). Para moverla, cambiad su `<init_pose>`. Ninguna otra cosa del mundo es roja, para no confundir al detector.
+El paquete incluye el mundo para mvsim `world/buscar_rojo.world.xml` y su mapa ya construido (`world/mapa.yaml`). Es una sala de 30 × 30 m con algunas paredes interiores y tres papeleras. El robot empieza en (-10, 10) y hay una **caja roja** en (-7,0). Para moverla, cambiad su `<init_pose>`. Ninguna otra cosa del mundo es roja, para no confundir al detector.
 
 ### Terminales
 
@@ -418,7 +418,6 @@ ros2 launch buscar_rojo capacidades.launch.py
 ros2 run buscar_rojo fsm_yasmin --ros-args -p destino_x:=-10.0 -p destino_y:=-9.0
 ros2 run buscar_rojo bt_pytrees --ros-args -p destino_x:=-10.0 -p destino_y:=-9.0
 ```
-
 
 Como ALTERNATIVA a `preparar_sim.launch.py` tenéis los pasos por separado, por si os son útiles (NO HAGÁIS LAS DOS COSAS):
 
