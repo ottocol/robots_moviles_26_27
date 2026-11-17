@@ -90,6 +90,8 @@
   .row input[type=range] { width: 100%; }
   .row .val { font-family: 'JetBrains Mono', monospace; font-size: 12px; text-align: right; color: #3a4155; }
   .chk { display: flex; align-items: center; gap: 7px; font-size: 13.5px; margin: 5px 0; }
+  .subhead { margin: 12px 0 2px; padding-top: 10px; border-top: 1px solid var(--line); font-weight: 600; font-size: 14px; }
+  .btn.mini { font-size: 12.5px; padding: 3px 9px; }
   .small { font-size: 12.5px; color: var(--muted); margin: 6px 0 0; }
   kbd { font-family: 'JetBrains Mono', monospace; font-size: 11.5px; background: #eef0f6; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
 </style>
@@ -154,6 +156,7 @@
         <div class="fold-body">
         <p>Cada celda de la ventana activa con certeza <span class="f">C</span> empuja al robot: <span class="f">F<sub>r</sub> = Σ F<sub>cr</sub>·C / d² · û</span> (alejándose de la celda). El objetivo tira con <span class="f">F<sub>t</sub> = F<sub>ct</sub>·û<sub>t</sub></span>.</p>
         <p>El robot orienta su rumbo según <span class="f">R = F<sub>t</sub> + F<sub>r</sub></span> y reduce la velocidad cuando <span class="f">|R|</span> es pequeña. Todo el entorno se resume en <b>un único vector</b>: ahí nacen los mínimos locales, las oscilaciones y los problemas con las puertas.</p>
+        <p>El artículo de 1989 añade cuatro mejoras (activables en los parámetros de VFF): filtro paso bajo en el giro, amortiguamiento <span class="f">F'<sub>r</sub> = w·F<sub>r</sub> + (1−w)·F<sub>r</sub>·(−cos θ)</span>, velocidad <span class="f">V<sub>max</sub>(1 − |cos θ|)</span> y seguimiento de paredes cuando el rumbo se aparta más de 90° del objetivo.</p>
         </div>
       </div>
       <div class="card foldable" data-fold="vfh">

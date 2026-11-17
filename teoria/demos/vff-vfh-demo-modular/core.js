@@ -32,7 +32,8 @@ const Sim = (() => {
     vmax: 0.6, wmax: 90, kw: 2.5, hz: 10, lag: 0.4,
     Ws: 33, range: 2.0, nrays: 48, noise: 0.02, spurious: 0.02, known: false,
     Fct: 1.0, Fcr: 0.003,
-    tau: 150, l: 5, smax: 16, hm: 1200, footprint: true, fp: 1.0, beyond: true,
+    lpf: false, tf: 0.4, damp: false, wd: 0.25, vlaw: false, wfm: false, delta: 145,
+    tau: 150, l: 5, smax: 18, vmin: 0.04, hm: 1200, footprint: true, fp: 1.0, beyond: true,
   };
 
   // ---------------- mundo ----------------
@@ -77,6 +78,15 @@ const Sim = (() => {
         rect(w, 3.4, 3.9, 5.6, 4.1);
         rect(w, 5.4, 1.5, 5.6, 4.1);
         w.start = { x: 1.0, y: 2.8, th: 0 }; w.target = { x: 7.0, y: 2.8 };
+      },
+    },
+    trampaPeq: {
+      name: 'Trampa pequeña (recuperación)',
+      build(w) {
+        rect(w, 3.8, 2.1, 4.6, 2.3);
+        rect(w, 3.8, 3.3, 4.6, 3.5);
+        rect(w, 4.4, 2.1, 4.6, 3.5);
+        w.start = { x: 1.2, y: 2.8, th: 0 }; w.target = { x: 6.6, y: 2.8 };
       },
     },
     puerta: {
@@ -144,7 +154,7 @@ const Sim = (() => {
       cmd: undefined, ctrlT: 0,
       trail: [[s.x, s.y]], t: 0, dist: 0, v: 0, w: 0, state: 'run', stuck: false,
       collisions: 0, posLog: [], rays: [], forces: null, hist: null, lastTrail: 0,
-      flips: 0, lastSign: 0,
+      flips: 0, lastSign: 0, wf: { active: false, mode: null, count: 0, off: 0, loop: 0, forced: false }, wcmd: 0,
     };
   }
   function resetRobot(r, s) { Object.assign(r, makeRobot(r.alg, s)); }
@@ -210,6 +220,7 @@ const Sim = (() => {
   }
 
   // ---------------- VFF ----------------
+  // Mejoras de Borenstein y Koren (1989), secc. III y IV, activables con P.lpf, P.damp, P.vlaw, P.wfm
   function vff(r, w, P) {
     let frx = 0, fry = 0;
     forWindow(r, P, (cx, cy, c) => {
@@ -218,11 +229,51 @@ const Sim = (() => {
       const f = P.Fcr * c / (d * d);
       frx += f * dx / d; fry += f * dy / d;
     }, w.target);
+    const frm = Math.hypot(frx, fry);
+    // cos θ entre la velocidad (dirección de avance) y Fr  (ec. 9)
+    const vx = Math.cos(r.th), vy = -Math.sin(r.th);
+    const cosT = frm > 1e-9 ? (vx * frx + vy * fry) / frm : 0;
+    let dfrx = frx, dfry = fry;
+    if (P.damp) {          // F'r = w·Fr + (1−w)·Fr·(−cos θ)   (ec. 8)
+      const k = P.wd + (1 - P.wd) * (-cosT);
+      dfrx = frx * k; dfry = fry * k;
+    }
     const tx = w.target.x - r.x, ty = w.target.y - r.y, dt = Math.max(Math.hypot(tx, ty), 1e-6);
-    const ftx = P.Fct * tx / dt, fty = P.Fct * ty / dt;
-    const Rx = ftx + frx, Ry = fty + fry, Rm = Math.hypot(Rx, Ry);
-    r.forces = { ft: [ftx, fty], fr: [frx, fry], R: [Rx, Ry] };
-    return { theta: Math.atan2(-Ry, Rx), vscale: Math.min(1, Rm / P.Fct) };
+    let ftx = P.Fct * tx / dt, fty = P.Fct * ty / dt;
+
+    // detección de trampa y seguimiento de paredes (secc. IV)
+    const thT = Math.atan2(-ty, tx), th0 = r.th;
+    const W = r.wf;
+    if (P.wfm) {
+      if (W.active) {
+        W.off += wrap(thT - W.pT) - wrap(th0 - W.p0);     // ángulos sin módulo 360 (420° ≠ 60°)
+        W.loop += wrap(thT - W.pT);                         // ec. 13: vuelta completa alrededor del objetivo
+        if (Math.abs(W.off) < Math.PI / 2) W.active = false;
+        else if (Math.abs(W.loop) > 2 * Math.PI) { W.active = false; W.forced = true; }
+      } else {
+        const off = wrap(thT - th0);
+        if (W.forced) { if (Math.abs(off) < Math.PI / 2) W.forced = false; }
+        else if (Math.abs(off) > Math.PI / 2 && frm > 0.1 * P.Fct) {   // ec. 12: más de 90° fuera del objetivo
+          W.active = true; W.off = off; W.loop = 0; W.count++;
+          if (!W.mode) W.mode = wrap(Math.atan2(-fry, frx) - th0) < 0 ? 'L' : 'R';  // Fr a la derecha → pared a la izquierda
+        }
+      }
+      W.pT = thT; W.p0 = th0;
+      if (W.active) {
+        if (frm > 1e-6) W.thr = Math.atan2(-fry, frx);
+        if (W.thr !== undefined) {             // fuerza atractiva virtual F''t en θr ± δ
+          const a = W.thr + (W.mode === 'L' ? 1 : -1) * P.delta * D2R;
+          ftx = P.Fct * Math.cos(a); fty = -P.Fct * Math.sin(a);
+        }
+      }
+    } else W.active = false;
+
+    const Rx = ftx + dfrx, Ry = fty + dfry, Rm = Math.hypot(Rx, Ry);
+    r.forces = { ft: [ftx, fty], fr: [dfrx, dfry], R: [Rx, Ry], virtual: W.active, cosT };
+    // velocidad: V = Vmax si |Fr| = 0;  Vmax·(1 − |cos θ|) si |Fr| > 0   (ec. 10)
+    // (adaptación: el factor |cos θ| se pondera con |Fr|/Fct para que un obstáculo lejano detrás no pare al robot)
+    const vscale = P.vlaw ? 1 - Math.abs(cosT) * Math.min(1, frm / P.Fct) : Math.min(1, Rm / P.Fct);
+    return { theta: Math.atan2(-Ry, Rx), vscale, paper: P.vlaw };
   }
 
   // ---------------- VFH ----------------
@@ -304,7 +355,7 @@ const Sim = (() => {
     }
     const hc = hs[secOf(r.th)];
     r.hist = { h, hs, free, kt, theta, valleys, sel, mode, hc };
-    return { theta, vscale: 1 - Math.min(hc, P.hm) / P.hm };
+    return { theta, vscale: 1 - Math.min(hc, P.hm) / P.hm, vfh: true };
   }
 
   // ---------------- paso de simulación ----------------
@@ -321,7 +372,18 @@ const Sim = (() => {
       else {
         r.state = 'run';
         const err = wrap(dec.theta - r.th);
-        r.cmd = { v: P.vmax * dec.vscale * Math.max(0, Math.cos(err)), w: clamp(P.kw * err, -wmax, wmax) };
+        let wc = clamp(P.kw * err, -wmax, wmax);                 // Ω' = Ks·(θR − θ)   (ec. 5)
+        if (r.alg === 'VFF' && P.lpf) {                          // filtro paso bajo en el giro (ec. 7)
+          const T = 1 / P.hz;
+          wc = r.wcmd + Math.min(1, T / P.tf) * (wc - r.wcmd);
+        }
+        r.wcmd = wc;
+        let vc;
+        if (dec.vfh) {   // VFH: V = V'·(1 − |Ω|/Ωmax) + Vmin
+          vc = P.vmax * dec.vscale * (1 - Math.abs(wc) / wmax) + P.vmin;
+          if (Math.abs(err) > Math.PI / 2) vc = Math.min(vc, P.vmin);
+        } else vc = P.vmax * dec.vscale * Math.max(0, Math.cos(err));
+        r.cmd = { v: vc, w: wc };
       }
     }
     // dinámica de primer orden (inercia) en v y ω

@@ -90,6 +90,8 @@
   .row input[type=range] { width: 100%; }
   .row .val { font-family: 'JetBrains Mono', monospace; font-size: 12px; text-align: right; color: #3a4155; }
   .chk { display: flex; align-items: center; gap: 7px; font-size: 13.5px; margin: 5px 0; }
+  .subhead { margin: 12px 0 2px; padding-top: 10px; border-top: 1px solid var(--line); font-weight: 600; font-size: 14px; }
+  .btn.mini { font-size: 12.5px; padding: 3px 9px; }
   .small { font-size: 12.5px; color: var(--muted); margin: 6px 0 0; }
   kbd { font-family: 'JetBrains Mono', monospace; font-size: 11.5px; background: #eef0f6; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
 </style>
@@ -154,6 +156,7 @@
         <div class="fold-body">
         <p>Cada celda de la ventana activa con certeza <span class="f">C</span> empuja al robot: <span class="f">F<sub>r</sub> = Σ F<sub>cr</sub>·C / d² · û</span> (alejándose de la celda). El objetivo tira con <span class="f">F<sub>t</sub> = F<sub>ct</sub>·û<sub>t</sub></span>.</p>
         <p>El robot orienta su rumbo según <span class="f">R = F<sub>t</sub> + F<sub>r</sub></span> y reduce la velocidad cuando <span class="f">|R|</span> es pequeña. Todo el entorno se resume en <b>un único vector</b>: ahí nacen los mínimos locales, las oscilaciones y los problemas con las puertas.</p>
+        <p>El artículo de 1989 añade cuatro mejoras (activables en los parámetros de VFF): filtro paso bajo en el giro, amortiguamiento <span class="f">F'<sub>r</sub> = w·F<sub>r</sub> + (1−w)·F<sub>r</sub>·(−cos θ)</span>, velocidad <span class="f">V<sub>max</sub>(1 − |cos θ|)</span> y seguimiento de paredes cuando el rumbo se aparta más de 90° del objetivo.</p>
         </div>
       </div>
       <div class="card foldable" data-fold="vfh">
@@ -230,7 +233,8 @@ const Sim = (() => {
     vmax: 0.6, wmax: 90, kw: 2.5, hz: 10, lag: 0.4,
     Ws: 33, range: 2.0, nrays: 48, noise: 0.02, spurious: 0.02, known: false,
     Fct: 1.0, Fcr: 0.003,
-    tau: 150, l: 5, smax: 16, hm: 1200, footprint: true, fp: 1.0, beyond: true,
+    lpf: false, tf: 0.4, damp: false, wd: 0.25, vlaw: false, wfm: false, delta: 145,
+    tau: 150, l: 5, smax: 18, vmin: 0.04, hm: 1200, footprint: true, fp: 1.0, beyond: true,
   };
 
   // ---------------- mundo ----------------
@@ -275,6 +279,15 @@ const Sim = (() => {
         rect(w, 3.4, 3.9, 5.6, 4.1);
         rect(w, 5.4, 1.5, 5.6, 4.1);
         w.start = { x: 1.0, y: 2.8, th: 0 }; w.target = { x: 7.0, y: 2.8 };
+      },
+    },
+    trampaPeq: {
+      name: 'Trampa pequeña (recuperación)',
+      build(w) {
+        rect(w, 3.8, 2.1, 4.6, 2.3);
+        rect(w, 3.8, 3.3, 4.6, 3.5);
+        rect(w, 4.4, 2.1, 4.6, 3.5);
+        w.start = { x: 1.2, y: 2.8, th: 0 }; w.target = { x: 6.6, y: 2.8 };
       },
     },
     puerta: {
@@ -342,7 +355,7 @@ const Sim = (() => {
       cmd: undefined, ctrlT: 0,
       trail: [[s.x, s.y]], t: 0, dist: 0, v: 0, w: 0, state: 'run', stuck: false,
       collisions: 0, posLog: [], rays: [], forces: null, hist: null, lastTrail: 0,
-      flips: 0, lastSign: 0,
+      flips: 0, lastSign: 0, wf: { active: false, mode: null, count: 0, off: 0, loop: 0, forced: false }, wcmd: 0,
     };
   }
   function resetRobot(r, s) { Object.assign(r, makeRobot(r.alg, s)); }
@@ -408,6 +421,7 @@ const Sim = (() => {
   }
 
   // ---------------- VFF ----------------
+  // Mejoras de Borenstein y Koren (1989), secc. III y IV, activables con P.lpf, P.damp, P.vlaw, P.wfm
   function vff(r, w, P) {
     let frx = 0, fry = 0;
     forWindow(r, P, (cx, cy, c) => {
@@ -416,11 +430,51 @@ const Sim = (() => {
       const f = P.Fcr * c / (d * d);
       frx += f * dx / d; fry += f * dy / d;
     }, w.target);
+    const frm = Math.hypot(frx, fry);
+    // cos θ entre la velocidad (dirección de avance) y Fr  (ec. 9)
+    const vx = Math.cos(r.th), vy = -Math.sin(r.th);
+    const cosT = frm > 1e-9 ? (vx * frx + vy * fry) / frm : 0;
+    let dfrx = frx, dfry = fry;
+    if (P.damp) {          // F'r = w·Fr + (1−w)·Fr·(−cos θ)   (ec. 8)
+      const k = P.wd + (1 - P.wd) * (-cosT);
+      dfrx = frx * k; dfry = fry * k;
+    }
     const tx = w.target.x - r.x, ty = w.target.y - r.y, dt = Math.max(Math.hypot(tx, ty), 1e-6);
-    const ftx = P.Fct * tx / dt, fty = P.Fct * ty / dt;
-    const Rx = ftx + frx, Ry = fty + fry, Rm = Math.hypot(Rx, Ry);
-    r.forces = { ft: [ftx, fty], fr: [frx, fry], R: [Rx, Ry] };
-    return { theta: Math.atan2(-Ry, Rx), vscale: Math.min(1, Rm / P.Fct) };
+    let ftx = P.Fct * tx / dt, fty = P.Fct * ty / dt;
+
+    // detección de trampa y seguimiento de paredes (secc. IV)
+    const thT = Math.atan2(-ty, tx), th0 = r.th;
+    const W = r.wf;
+    if (P.wfm) {
+      if (W.active) {
+        W.off += wrap(thT - W.pT) - wrap(th0 - W.p0);     // ángulos sin módulo 360 (420° ≠ 60°)
+        W.loop += wrap(thT - W.pT);                         // ec. 13: vuelta completa alrededor del objetivo
+        if (Math.abs(W.off) < Math.PI / 2) W.active = false;
+        else if (Math.abs(W.loop) > 2 * Math.PI) { W.active = false; W.forced = true; }
+      } else {
+        const off = wrap(thT - th0);
+        if (W.forced) { if (Math.abs(off) < Math.PI / 2) W.forced = false; }
+        else if (Math.abs(off) > Math.PI / 2 && frm > 0.1 * P.Fct) {   // ec. 12: más de 90° fuera del objetivo
+          W.active = true; W.off = off; W.loop = 0; W.count++;
+          if (!W.mode) W.mode = wrap(Math.atan2(-fry, frx) - th0) < 0 ? 'L' : 'R';  // Fr a la derecha → pared a la izquierda
+        }
+      }
+      W.pT = thT; W.p0 = th0;
+      if (W.active) {
+        if (frm > 1e-6) W.thr = Math.atan2(-fry, frx);
+        if (W.thr !== undefined) {             // fuerza atractiva virtual F''t en θr ± δ
+          const a = W.thr + (W.mode === 'L' ? 1 : -1) * P.delta * D2R;
+          ftx = P.Fct * Math.cos(a); fty = -P.Fct * Math.sin(a);
+        }
+      }
+    } else W.active = false;
+
+    const Rx = ftx + dfrx, Ry = fty + dfry, Rm = Math.hypot(Rx, Ry);
+    r.forces = { ft: [ftx, fty], fr: [dfrx, dfry], R: [Rx, Ry], virtual: W.active, cosT };
+    // velocidad: V = Vmax si |Fr| = 0;  Vmax·(1 − |cos θ|) si |Fr| > 0   (ec. 10)
+    // (adaptación: el factor |cos θ| se pondera con |Fr|/Fct para que un obstáculo lejano detrás no pare al robot)
+    const vscale = P.vlaw ? 1 - Math.abs(cosT) * Math.min(1, frm / P.Fct) : Math.min(1, Rm / P.Fct);
+    return { theta: Math.atan2(-Ry, Rx), vscale, paper: P.vlaw };
   }
 
   // ---------------- VFH ----------------
@@ -502,7 +556,7 @@ const Sim = (() => {
     }
     const hc = hs[secOf(r.th)];
     r.hist = { h, hs, free, kt, theta, valleys, sel, mode, hc };
-    return { theta, vscale: 1 - Math.min(hc, P.hm) / P.hm };
+    return { theta, vscale: 1 - Math.min(hc, P.hm) / P.hm, vfh: true };
   }
 
   // ---------------- paso de simulación ----------------
@@ -519,7 +573,18 @@ const Sim = (() => {
       else {
         r.state = 'run';
         const err = wrap(dec.theta - r.th);
-        r.cmd = { v: P.vmax * dec.vscale * Math.max(0, Math.cos(err)), w: clamp(P.kw * err, -wmax, wmax) };
+        let wc = clamp(P.kw * err, -wmax, wmax);                 // Ω' = Ks·(θR − θ)   (ec. 5)
+        if (r.alg === 'VFF' && P.lpf) {                          // filtro paso bajo en el giro (ec. 7)
+          const T = 1 / P.hz;
+          wc = r.wcmd + Math.min(1, T / P.tf) * (wc - r.wcmd);
+        }
+        r.wcmd = wc;
+        let vc;
+        if (dec.vfh) {   // VFH: V = V'·(1 − |Ω|/Ωmax) + Vmin
+          vc = P.vmax * dec.vscale * (1 - Math.abs(wc) / wmax) + P.vmin;
+          if (Math.abs(err) > Math.PI / 2) vc = Math.min(vc, P.vmin);
+        } else vc = P.vmax * dec.vscale * Math.max(0, Math.cos(err));
+        r.cmd = { v: vc, w: wc };
       }
     }
     // dinámica de primer orden (inercia) en v y ω
@@ -580,9 +645,10 @@ if (typeof module !== 'undefined') module.exports = Sim;
 
   const HINTS = {
     muro: ['Mínimo local frente a un muro', 'Muro simétrico entre robot y objetivo. En VFF, delante del muro la atracción y la repulsión se anulan (|R| ≈ 0): el robot frena y se queda parado en un mínimo local. VFH ve dos valles, por encima y por debajo del muro, elige uno y lo rodea.'],
-    trampaU: ['Trampa en U', 'La U está abierta hacia el robot. Los dos métodos son locales: solo ven la ventana activa, así que entran en la U y quedan atrapados (VFH puede quedarse dando vueltas dentro). Para salir hace falta un planificador global o un comportamiento de seguimiento de paredes.'],
+    trampaU: ['Trampa en U', 'La U está abierta hacia el robot. Los dos métodos son locales: solo ven la ventana activa, así que entran en la U y quedan atrapados (VFH puede quedarse dando vueltas dentro). Aquí ni siquiera el seguimiento de paredes del artículo de 1989 basta: al salir de la U, la pared de la sala queda dentro de la ventana activa y el robot acaba siguiéndola. Prueba la «Trampa pequeña», donde sí funciona.'],
+    trampaPeq: ['Recuperación de trampas (seguimiento de paredes)', 'Trampa pequeña en U. VFF básico se queda dentro. Activa «Seguimiento de paredes» en los parámetros de VFF: cuando el rumbo se desvía más de 90° del objetivo (ec. 12), el robot sustituye la atracción del objetivo por una fuerza virtual F″t girada δ = 145° respecto a Fr, bordea el obstáculo y, al volver a menos de 90°, retoma VFF. En la flecha verde discontinua se ve F″t.'],
     puerta: ['Dificultad para pasar por puertas', 'Puerta de 0,8 m para un robot de 0,4 m de diámetro. En VFF, las dos jambas empujan a la vez y la resultante aparta al robot del hueco: no consigue entrar. VFH encuentra un valle estrecho y apunta a su centro. Prueba a bajar F_cr hasta que VFF consiga pasar, o a bajar τ / subir l hasta que el hueco desaparezca del histograma de VFH.'],
-    pasillo: ['Oscilaciones en un pasillo', 'Pasillo de 1,4 m. VFF entra, pero zigzaguea de pared a pared: en cuanto se desvía del centro, la fuerza lateral crece con 1/d² y lo devuelve con demasiada fuerza. Sube la velocidad máxima a ~1 m/s o la inercia (en «Robot, sensor y rejilla») y la oscilación crece. VFH sigue el centro del valle con una trayectoria mucho más suave.'],
+    pasillo: ['Oscilaciones en un pasillo', 'Pasillo de 1,4 m. VFF entra, pero zigzaguea de pared a pared: en cuanto se desvía del centro, la fuerza lateral crece con 1/d² y lo devuelve con demasiada fuerza. Sube la velocidad máxima a ~1 m/s o la inercia (en «Robot, sensor y rejilla») y la oscilación crece. Activa el amortiguamiento de Fr (ec. 8) y compara: el zigzag casi desaparece, a costa de pasar más cerca de las paredes. VFH sigue el centro del valle con una trayectoria mucho más suave.'],
     bosque: ['Campo de obstáculos', 'Obstáculos dispersos. En VFF cada obstáculo cercano tuerce la resultante: el robot da bandazos (mira el contador de cambios de giro) y puede quedarse encajado entre dos obstáculos. VFH elige huecos entre ellos y avanza más recto. «Nuevo bosque» genera otra distribución.'],
     oficina: ['Dos salas, dos puertas', 'Una puerta ancha (arriba) y otra estrecha (abajo). Mueve el objetivo por la sala derecha y observa qué puerta intenta usar cada método… y si lo consigue.'],
     vacio: ['Mapa libre', 'Pinta tus propios obstáculos (clic derecho borra). Ideas: un muro con un hueco, un pasillo en L, una trampa en V. Prueba también a desactivar «Ignorar obstáculos más lejanos que el objetivo» y a dejar el objetivo cerca de una pared: el obstáculo de detrás impide llegar.'],
@@ -741,11 +807,11 @@ if (typeof module !== 'undefined') module.exports = Sim;
       const k = 0.7 / P.Fct, cap = 2.2;
       const vec = ([fx, fy]) => { const m = Math.hypot(fx, fy), L = Math.min(m * k, cap); return m > 1e-9 ? [fx / m * L, fy / m * L] : [0, 0]; };
       const ft = vec(r.forces.ft), fr = vec(r.forces.fr), R = vec(r.forces.R);
-      arrow(r.x, r.y, r.x + ft[0], r.y + ft[1], COL.ft, 2.2, 0.09);
+      arrow(r.x, r.y, r.x + ft[0], r.y + ft[1], COL.ft, 2.2, 0.09, r.forces.virtual ? [6, 4] : null);
       arrow(r.x, r.y, r.x + fr[0], r.y + fr[1], COL.fr, 2.2, 0.09);
       arrow(r.x, r.y, r.x + R[0], r.y + R[1], COL.R, 3.2, 0.12);
-      label('Ft', r.x + ft[0] * 1.08 + 0.05, r.y + ft[1] * 1.08, COL.ft, 13);
-      if (Math.hypot(...fr) > 0.08) label('Fr', r.x + fr[0] * 1.08 + 0.05, r.y + fr[1] * 1.08, COL.fr, 13);
+      label(r.forces.virtual ? 'F″t' : 'Ft', r.x + ft[0] * 1.08 + 0.05, r.y + ft[1] * 1.08, COL.ft, 13);
+      if (Math.hypot(...fr) > 0.08) label(P.damp ? "F'r" : 'Fr', r.x + fr[0] * 1.08 + 0.05, r.y + fr[1] * 1.08, COL.fr, 13);
       if (Math.hypot(...R) > 0.08) label('R', r.x + R[0] * 1.08 + 0.05, r.y + R[1] * 1.08, COL.R, 13);
     }
 
@@ -836,7 +902,8 @@ if (typeof module !== 'undefined') module.exports = Sim;
       let extra = '';
       if (r.alg === 'VFF' && r.forces) {
         const m = v => Math.hypot(v[0], v[1]);
-        extra = `|F<sub>t</sub>| ${fmt(m(r.forces.ft))} · |F<sub>r</sub>| ${fmt(m(r.forces.fr))} · |R| ${fmt(m(r.forces.R))}`;
+        extra = `|F<sub>t</sub>| ${fmt(m(r.forces.ft))} · |F<sub>r</sub>${P.damp ? "'" : ''}| ${fmt(m(r.forces.fr))} · |R| ${fmt(m(r.forces.R))} · cos θ ${fmt(r.forces.cosT)}`;
+        if (P.wfm) extra += `<br>modo: ${r.wf.active ? `<b style="color:#16a34a">seguimiento de pared (${r.wf.mode === 'L' ? 'pared a la izquierda, L' : 'pared a la derecha, R'})</b>` : 'VFF normal'}${r.wf.count ? ` · trampas detectadas: ${r.wf.count}` : ''}`;
       }
       if (r.alg === 'VFH' && r.hist) {
         const h = r.hist;
@@ -1009,12 +1076,29 @@ if (typeof module !== 'undefined') module.exports = Sim;
   slider('#vffBox', 'Fcr', 'F<sub>cr</sub> repulsión', 0.0005, 0.012, 0.0005, v => v.toFixed(4));
   slider('#vffBox', 'Fct', 'F<sub>ct</sub> atracción', 0.2, 3, 0.1, v => v.toFixed(1));
   note('#vffBox', 'Al subir F<sub>cr</sub> el robot se separa más de los obstáculos, pero entra peor por los huecos.');
+  const sub = (box, html) => { const h = document.createElement('div'); h.className = 'subhead'; h.innerHTML = html; $(box).appendChild(h); };
+  sub('#vffBox', 'Mejoras del artículo de 1989 <span class="lbl">(Borenstein y Koren, secc. III–IV)</span>');
+  const presetRow = document.createElement('div'); presetRow.className = 'bar'; presetRow.style.margin = '4px 0 2px';
+  presetRow.innerHTML = '<button class="btn mini" id="vffBasic">VFF básico</button><button class="btn mini" id="vffFull">Todas las mejoras</button>';
+  $('#vffBox').appendChild(presetRow);
+  check('#vffBox', 'lpf', 'Filtro paso bajo en el giro (ec. 7)', P, () => robots.forEach(r => { r.wcmd = r.w; }));
+  slider('#vffBox', 'tf', '&nbsp;&nbsp;constante τ del filtro', 0.1, 1.5, 0.05, v => v.toFixed(2) + ' s');
+  check('#vffBox', 'damp', 'Amortiguamiento de F<sub>r</sub> (ec. 8)', P);
+  slider('#vffBox', 'wd', '&nbsp;&nbsp;peso w', 0, 1, 0.05, v => v.toFixed(2));
+  check('#vffBox', 'vlaw', 'Velocidad ∝ 1 − |cos θ| (ec. 10)', P);
+  check('#vffBox', 'wfm', 'Recuperación de trampas: seguimiento de paredes (ec. 12)', P, () => robots.forEach(r => { r.wf = { active: false, mode: null, count: 0, off: 0, loop: 0, forced: false }; }));
+  slider('#vffBox', 'delta', '&nbsp;&nbsp;ángulo δ', 90, 180, 5, v => v.toFixed(0) + '°');
+  note('#vffBox', "F'<sub>r</sub> = w·F<sub>r</sub> + (1−w)·F<sub>r</sub>·(−cos θ), con θ el ángulo entre F<sub>r</sub> y la velocidad. La ley de velocidad pondera |cos θ| con |F<sub>r</sub>|/F<sub>ct</sub> (en el artículo no): sin eso, cualquier obstáculo justo detrás o delante dentro de la ventana para al robot.");
+  const setVff = on => { ['lpf', 'damp', 'vlaw', 'wfm'].forEach(k => { P[k] = on; }); robots.forEach(r => { r.wcmd = r.w; r.wf = { active: false, mode: null, count: 0, off: 0, loop: 0, forced: false }; }); sliders.forEach(f => f()); };
+  $('#vffBasic').onclick = () => setVff(false);
+  $('#vffFull').onclick = () => setVff(true);
 
   slider('#vfhBox', 'tau', 'Umbral τ', 40, 800, 10, v => v.toFixed(0));
   slider('#vfhBox', 'l', 'Suavizado l', 0, 10, 1, v => v.toFixed(0) + ' sect.');
   slider('#vfhBox', 'smax', 's<sub>max</sub> valle ancho', 4, 30, 1, v => `${v} (${v * ALPHA}°)`);
   slider('#vfhBox', 'hm', 'h<sub>m</sub> frenado', 200, 3000, 50, v => v.toFixed(0));
-  note('#vfhBox', 'Con τ alto el robot ve más huecos y se acerca más a los obstáculos; con τ bajo, las puertas desaparecen del histograma.');
+  slider('#vfhBox', 'vmin', 'V<sub>min</sub>', 0, 0.15, 0.01, v => (v * 100).toFixed(0) + ' cm/s');
+  note('#vfhBox', 'Con τ alto el robot ve más huecos y se acerca más a los obstáculos; con τ bajo, las puertas desaparecen del histograma. Velocidad: V = V′·(1 − |Ω|/Ω<sub>max</sub>) + V<sub>min</sub>, con V′ = V<sub>max</sub>·(1 − h″<sub>c</sub>/h<sub>m</sub>).');
 
   slider('#robBox', 'vmax', 'Velocidad máx.', 0.2, 1.2, 0.05, v => v.toFixed(2) + ' m/s');
   slider('#robBox', 'wmax', 'Giro máx.', 30, 180, 5, v => v.toFixed(0) + '°/s');
