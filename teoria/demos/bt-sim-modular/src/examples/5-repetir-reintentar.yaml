@@ -1,0 +1,21 @@
+title: Reintentar y repetir
+description: >
+  RetryUntilSuccessful y Repeat no iteran dentro de una misma pasada: tras cada
+  intento de un hijo síncrono devuelven RUNNING y piden re-tick. Cuenta cuántos
+  ticks hacen falta para abrir la puerta al tercer intento y aplaudir tres veces.
+tree:
+  type: Sequence
+  id: root
+  children:
+    - type: RetryUntilSuccessful
+      id: RETRY
+      num_attempts: 3
+      child: {type: Action, id: OPEN, name: Abrir puerta}
+    - type: Repeat
+      id: REP
+      num_cycles: 3
+      child: {type: Action, id: CLAP, name: Aplaudir}
+scenario:
+  - {OPEN: FAILURE, CLAP: SUCCESS}
+  - {}
+  - {OPEN: SUCCESS}

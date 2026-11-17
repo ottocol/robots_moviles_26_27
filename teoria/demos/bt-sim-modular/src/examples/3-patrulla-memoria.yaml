@@ -1,0 +1,25 @@
+title: Patrulla con memoria
+description: >
+  Ejemplo de la documentación de BT.CPP. El robot visita A, B y C una sola vez:
+  SequenceWithMemory no repite los destinos alcanzados, ni siquiera después de que
+  la batería baja interrumpa la patrulla.
+tree:
+  type: ReactiveSequence
+  id: root
+  children:
+    - {type: Condition, id: BAT, name: Batería OK}
+    - type: SequenceWithMemory
+      id: PATROL
+      name: Patrulla
+      children:
+        - {type: Action, id: GA, name: Ir a A, async: true}
+        - {type: Action, id: GB, name: Ir a B, async: true}
+        - {type: Action, id: GC, name: Ir a C, async: true}
+scenario:
+  - {BAT: SUCCESS, GA: RUNNING, GB: RUNNING, GC: RUNNING}
+  - {GA: SUCCESS}
+  - {}
+  - {BAT: FAILURE}
+  - {BAT: SUCCESS}
+  - {GB: SUCCESS}
+  - {GC: SUCCESS}

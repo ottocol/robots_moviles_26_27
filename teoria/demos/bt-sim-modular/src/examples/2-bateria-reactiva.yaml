@@ -1,0 +1,17 @@
+title: Navegar mientras haya batería
+description: >
+  Una ReactiveSequence comprueba la batería en cada tick. Cuando la condición falla,
+  interrumpe la navegación. Cambia "ReactiveSequence" por "Sequence" en el YAML y
+  repite el escenario: la batería deja de comprobarse mientras se navega.
+tree:
+  type: ReactiveSequence
+  id: root
+  children:
+    - {type: Condition, id: BAT, name: Batería OK}
+    - {type: Action, id: NAV, name: Navegar al objetivo, async: true}
+scenario:
+  - {BAT: SUCCESS, NAV: RUNNING}
+  - {BAT: SUCCESS, NAV: RUNNING}
+  - {BAT: FAILURE}
+  - {BAT: SUCCESS, NAV: RUNNING}
+  - {BAT: SUCCESS, NAV: SUCCESS}

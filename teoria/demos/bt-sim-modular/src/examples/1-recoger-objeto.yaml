@@ -1,0 +1,19 @@
+title: Recoger objeto
+description: >
+  El árbol del simulador del curso pasado. La raíz es una Sequence de BT.CPP (→* en
+  la notación de clase): mientras Acercarse esté en RUNNING, los ticks siguientes no
+  vuelven a comprobar Detectar objeto.
+tree:
+  type: Sequence
+  id: root
+  children:
+    - {type: Condition, id: A, name: Detectar objeto}
+    - type: Fallback
+      id: B
+      children:
+        - {type: Action, id: B1, name: Acercarse, async: true}
+        - {type: Action, id: B2, name: Replanificar, async: true}
+    - type: Repeat
+      id: R1
+      num_cycles: 3
+      child: {type: Action, id: C, name: Recoger, async: true}

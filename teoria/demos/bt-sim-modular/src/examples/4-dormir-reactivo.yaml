@@ -1,0 +1,14 @@
+title: Dormir hasta descansar
+description: >
+  Ejemplo de la documentación de BT.CPP. ReactiveFallback vuelve a preguntar
+  "¿Descansado?" en cada tick; en cuanto responde SUCCESS, interrumpe Dormir.
+tree:
+  type: ReactiveFallback
+  id: root
+  children:
+    - {type: Condition, id: REST, name: ¿Descansado?}
+    - {type: Action, id: SLEEP, name: Dormir, async: true}
+scenario:
+  - {REST: FAILURE, SLEEP: RUNNING}
+  - {}
+  - {REST: SUCCESS}

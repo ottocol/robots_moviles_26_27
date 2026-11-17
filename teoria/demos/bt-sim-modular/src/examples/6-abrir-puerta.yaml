@@ -1,0 +1,23 @@
+title: Abrir la puerta
+description: >
+  El ejemplo de las transparencias. Allí aparecen ? y → sin asterisco, que en la
+  notación de clase son los nodos sin memoria: en BT.CPP, ReactiveFallback y
+  ReactiveSequence. El escenario cuenta dos intentos: con llave, alguien abre desde
+  dentro y se interrumpe "Abrir puerta"; sin llave, se echa la puerta abajo. Cambia los
+  tipos a Fallback y Sequence para ver que en el tick 2 ya no se vuelve a mirar la puerta.
+tree:
+  type: ReactiveFallback
+  id: root
+  children:
+    - {type: Condition, id: abierta, name: ¿Puerta abierta?}
+    - type: ReactiveSequence
+      id: con_llave
+      children:
+        - {type: Condition, id: llave, name: ¿Tengo llave?}
+        - {type: Action, id: abrir, name: Abrir puerta, async: true}
+    - {type: Action, id: echar, name: Echar la puerta abajo, async: true}
+scenario:
+  - {abierta: FAILURE, llave: SUCCESS, abrir: RUNNING, echar: RUNNING}
+  - {abierta: SUCCESS}
+  - {abierta: FAILURE, llave: FAILURE}
+  - {echar: SUCCESS}
