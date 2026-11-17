@@ -1,0 +1,1052 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VFF / VFH — demo interactiva</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Jost:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f5f6fa; --card: #ffffff; --ink: #1b1f2c; --muted: #646b80; --line: #e2e5ee;
+    --vff: #2563eb; --vfh: #b62fd0; --goal: #16a34a; --warn: #d97706; --bad: #dc2626;
+    --cert: #ea6a0c;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.45 Jost, system-ui, sans-serif; }
+  header { max-width: 1320px; margin: 0 auto; padding: 18px 20px 6px; display: flex; align-items: baseline; gap: 18px; flex-wrap: wrap; }
+  h1 { margin: 0; font-size: 34px; font-weight: 600; letter-spacing: -0.5px;
+       background: linear-gradient(90deg, #3b6fd8 0%, #8b3be0 55%, #d23ad8 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  header .sub { color: var(--muted); font-size: 16px; }
+  .app { max-width: 1320px; margin: 0 auto; padding: 8px 20px 30px; display: grid; grid-template-columns: minmax(0, 1fr) 370px;
+         grid-template-areas: "map side" "expl side"; grid-template-rows: auto 1fr; column-gap: 18px; row-gap: 0; }
+  #mapArea { grid-area: map; min-width: 0; }
+  #explArea { grid-area: expl; min-width: 0; align-self: start; }
+  aside { grid-area: side; align-self: start; }
+  @media (max-width: 1020px) {
+    .app { grid-template-columns: 1fr; grid-template-areas: "map" "side" "expl"; grid-template-rows: auto; row-gap: 12px; }
+  }
+  .fold-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+  .fold-btn { border: 1px solid var(--line); background: #fff; border-radius: 6px; width: 26px; height: 24px; line-height: 1;
+              cursor: pointer; color: var(--muted); font-size: 16px; padding: 0; flex: none; }
+  .fold-btn:hover { border-color: #b9bfce; color: var(--ink); }
+  .foldable.folded .fold-body { display: none; }
+  .foldable.folded h3 { margin-bottom: 0 !important; }
+  .hint.foldable.folded, .explain .foldable.folded { padding-top: 8px; padding-bottom: 8px; }
+  .explain { align-items: start; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; }
+  .bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .bar .sep { width: 1px; height: 26px; background: var(--line); margin: 0 4px; }
+  .lbl { color: var(--muted); font-size: 13px; }
+  button, select { font: inherit; font-size: 14px; color: var(--ink); }
+  .btn { border: 1px solid var(--line); background: #fff; border-radius: 8px; padding: 5px 11px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+  .btn:hover { border-color: #c4c9d6; }
+  .btn.primary { background: var(--ink); color: #fff; border-color: var(--ink); min-width: 104px; justify-content: center; }
+  .btn.primary:hover { background: #33394d; }
+  select { border: 1px solid var(--line); border-radius: 8px; padding: 5px 8px; background: #fff; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: #fff; }
+  .seg button { border: 0; background: transparent; padding: 5px 11px; cursor: pointer; border-right: 1px solid var(--line); }
+  .seg button:last-child { border-right: 0; }
+  .seg button.on { background: #eef0f6; font-weight: 600; }
+  .seg button.on[data-alg="VFF"] { color: var(--vff); }
+  .seg button.on[data-alg="VFH"] { color: var(--vfh); }
+  .tool.on { background: #eef0f6; border-color: #b9bfce; font-weight: 600; }
+  .canvas-wrap { padding: 8px; position: relative; }
+  #world { display: block; width: 100%; height: auto; border-radius: 6px; touch-action: none; cursor: crosshair; }
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; padding: 2px 10px 8px; font-size: 13px; color: var(--muted); }
+  .legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -1px; margin-right: 5px; }
+  .hint { margin-top: 0; padding: 12px 16px; border-left: 4px solid #8b3be0; }
+  .hint h3 { margin: 0 0 4px; font-size: 16px; font-weight: 600; }
+  .hint p { margin: 0; }
+  .explain { margin-top: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 700px) { .explain { grid-template-columns: 1fr; } }
+  .explain .card { padding: 12px 16px; font-size: 14px; }
+  .explain h3 { margin: 0 0 6px; font-size: 16px; }
+  .explain h3.vff { color: var(--vff); } .explain h3.vfh { color: var(--vfh); }
+  .explain p { margin: 4px 0; }
+  .f { font-family: 'JetBrains Mono', monospace; font-size: 12.5px; background: #f2f3f8; padding: 1px 5px; border-radius: 4px; white-space: nowrap; }
+  aside { display: flex; flex-direction: column; gap: 12px; }
+  #mapArea .canvas-wrap { margin-bottom: 0; }
+  .status { padding: 10px 14px; }
+  .status .head { display: flex; justify-content: space-between; align-items: center; }
+  .status .name { font-weight: 700; font-size: 17px; }
+  .pill { font-size: 13px; padding: 2px 9px; border-radius: 99px; font-weight: 500; }
+  .pill.run { background: #e8effd; color: #1d4fbf; }
+  .pill.goal { background: #e3f6e8; color: #127436; }
+  .pill.stuck { background: #fdf0dc; color: #9a5300; }
+  .pill.bad { background: #fde4e4; color: #b01c1c; }
+  .nums { font-family: 'JetBrains Mono', monospace; font-size: 12.5px; color: #3a4155; margin-top: 4px; line-height: 1.6; }
+  .panel { padding: 10px 14px 12px; }
+  .panel h2 { margin: 0 0 4px; font-size: 15px; font-weight: 600; }
+  #histo { width: 100%; height: 190px; display: block; }
+  details.params { padding: 0; }
+  details.params summary { padding: 9px 14px; cursor: pointer; font-weight: 600; font-size: 15px; list-style: none; display: flex; justify-content: space-between; }
+  details.params summary::after { content: '+'; color: var(--muted); font-weight: 400; }
+  details.params[open] summary::after { content: '−'; }
+  details.params summary::-webkit-details-marker { display: none; }
+  details.params .body { padding: 0 14px 12px; }
+  .row { display: grid; grid-template-columns: 1fr 120px 66px; align-items: center; gap: 8px; margin: 5px 0; font-size: 13.5px; }
+  .row input[type=range] { width: 100%; }
+  .row .val { font-family: 'JetBrains Mono', monospace; font-size: 12px; text-align: right; color: #3a4155; }
+  .chk { display: flex; align-items: center; gap: 7px; font-size: 13.5px; margin: 5px 0; }
+  .small { font-size: 12.5px; color: var(--muted); margin: 6px 0 0; }
+  kbd { font-family: 'JetBrains Mono', monospace; font-size: 11.5px; background: #eef0f6; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>VFF/VFH</h1>
+  <div class="sub">Demo interactiva · Borenstein y Koren (años 80/90) · Robots móviles</div>
+</header>
+
+<div class="app">
+  <main id="mapArea">
+    <div class="bar">
+      <select id="preset" title="Escenario"></select>
+      <span class="sep"></span>
+      <div class="seg" id="algSeg">
+        <button data-alg="VFF">VFF</button><button data-alg="VFH">VFH</button><button data-alg="Ambos" class="on">Ambos</button>
+      </div>
+      <span class="sep"></span>
+      <button class="btn primary" id="runBtn">▶ Iniciar</button>
+      <button class="btn" id="stepBtn" title="Avanza un ciclo de control (S)">Paso</button>
+      <button class="btn" id="resetBtn" title="Robot al inicio y rejilla de certeza vacía (R)">↺ Reiniciar</button>
+      <select id="simSpeed" title="Velocidad de simulación"><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option><option value="8">8×</option></select>
+    </div>
+    <div class="bar">
+      <span class="lbl">Ratón</span>
+      <button class="btn tool on" data-tool="paint">■ Pintar obstáculo</button>
+      <button class="btn tool" data-tool="erase">□ Borrar</button>
+      <button class="btn tool" data-tool="target">◎ Mover objetivo</button>
+      <button class="btn tool" data-tool="robot">➤ Colocar robot</button>
+      <span class="lbl">Pincel</span>
+      <select id="brush"><option value="0">1 celda</option><option value="1" selected>3 celdas</option><option value="2">5 celdas</option><option value="4">9 celdas</option></select>
+      <span class="sep"></span>
+      <button class="btn" id="clearBtn">Vaciar mapa</button>
+      <button class="btn" id="forestBtn" style="display:none">Nuevo bosque</button>
+    </div>
+
+    <div class="card canvas-wrap">
+      <canvas id="world"></canvas>
+      <div class="legend">
+        <span><i style="background:#a9b0bf"></i>Obstáculo real</span>
+        <span><i style="background:var(--cert)"></i>Valor de certeza C (0–15)</span>
+        <span><i style="background:var(--goal);border-radius:50%"></i>Objetivo</span>
+        <span id="legF" ><b style="color:#16a34a">F<sub>t</sub></b> atractiva · <b style="color:#dc2626">F<sub>r</sub></b> repulsiva · <b>R</b> resultante</span>
+        <span id="legH"><i style="background:rgba(182,47,208,.45)"></i>Sector bloqueado (h' ≥ τ)</span>
+      </div>
+    </div>
+  </main>
+
+  <section id="explArea">
+    <div class="card hint foldable" data-fold="hint">
+      <div class="fold-head"><h3 id="hintTitle"></h3><button class="fold-btn" title="Plegar / desplegar">−</button></div>
+      <div class="fold-body">
+      <p id="hintText"></p>
+      <p class="small">Arrastra el objetivo o el robot directamente en cualquier momento. Clic derecho borra obstáculos. Teclado: <kbd>Espacio</kbd> iniciar/pausar · <kbd>S</kbd> paso · <kbd>R</kbd> reiniciar.</p>
+      </div>
+    </div>
+
+    <div class="explain">
+      <div class="card foldable" data-fold="vff">
+        <div class="fold-head"><h3 class="vff">VFF — Virtual Force Field</h3><button class="fold-btn" title="Plegar / desplegar">−</button></div>
+        <div class="fold-body">
+        <p>Cada celda de la ventana activa con certeza <span class="f">C</span> empuja al robot: <span class="f">F<sub>r</sub> = Σ F<sub>cr</sub>·C / d² · û</span> (alejándose de la celda). El objetivo tira con <span class="f">F<sub>t</sub> = F<sub>ct</sub>·û<sub>t</sub></span>.</p>
+        <p>El robot orienta su rumbo según <span class="f">R = F<sub>t</sub> + F<sub>r</sub></span> y reduce la velocidad cuando <span class="f">|R|</span> es pequeña. Todo el entorno se resume en <b>un único vector</b>: ahí nacen los mínimos locales, las oscilaciones y los problemas con las puertas.</p>
+        </div>
+      </div>
+      <div class="card foldable" data-fold="vfh">
+        <div class="fold-head"><h3 class="vfh">VFH — Vector Field Histogram</h3><button class="fold-btn" title="Plegar / desplegar">−</button></div>
+        <div class="fold-body">
+        <p>Cada celda suma <span class="f">m = C²·(a − b·d)</span> al sector de 5° en el que se encuentra (72 sectores). El histograma polar <span class="f">h</span> se suaviza con una ventana <span class="f">l</span> → <span class="f">h'</span>.</p>
+        <p>Los sectores con <span class="f">h' &lt; τ</span> forman <b>valles</b>. Se elige el valle más cercano a la dirección del objetivo: si es ancho (&gt; s<sub>max</sub>), se va a s<sub>max</sub>/2 de su borde; si es estrecho, a su centro. La velocidad baja cuando <span class="f">h'</span> es alto en la dirección de avance.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <aside>
+    <div id="statusBox" style="display:flex;flex-direction:column;gap:12px"></div>
+
+    <div class="card panel" id="histPanel">
+      <h2>Histograma polar suavizado h'(k) <span style="color:var(--vfh)">· VFH</span></h2>
+      <canvas id="histo"></canvas>
+      <p class="small"><span style="color:#16a34a">▲</span> objetivo · <span style="color:var(--vfh)">▲</span> dirección elegida · <b>|</b> rumbo actual · franja verde: valles · línea roja: umbral τ</p>
+    </div>
+
+    <details class="card params" open>
+      <summary>Visualización</summary>
+      <div class="body" id="visBox"></div>
+    </details>
+    <details class="card params" open>
+      <summary><span>Parámetros <span style="color:var(--vff)">VFF</span></span></summary>
+      <div class="body" id="vffBox"></div>
+    </details>
+    <details class="card params" open>
+      <summary><span>Parámetros <span style="color:var(--vfh)">VFH</span></span></summary>
+      <div class="body" id="vfhBox"></div>
+    </details>
+    <details class="card params">
+      <summary>Robot, sensor y rejilla</summary>
+      <div class="body" id="robBox"></div>
+    </details>
+    <button class="btn" id="defaultsBtn" style="align-self:flex-start">Restaurar parámetros por defecto</button>
+  </aside>
+</div>
+
+<script>
+// ===================== Núcleo de simulación VFF / VFH =====================
+const Sim = (() => {
+  const CS = 0.1;            // tamaño de celda (m)
+  const GW = 80, GH = 56;    // rejilla 8 m x 5.6 m
+  const WW = GW * CS, WH = GH * CS;
+  const NSEC = 72, ALPHA = 360 / NSEC;   // sectores de 5°
+  const RR = 0.2;            // radio del robot (m)
+  const D2R = Math.PI / 180;
+  const CMAX = 15;
+
+  const wrap = a => { while (a > Math.PI) a -= 2 * Math.PI; while (a < -Math.PI) a += 2 * Math.PI; return a; };
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const mod = (a, n) => ((a % n) + n) % n;
+
+  function mulberry(seed) {
+    return function () {
+      seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+      let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+  let rng = mulberry(12345);
+  function gauss() {
+    let u = 0, v = 0;
+    while (u === 0) u = rng();
+    while (v === 0) v = rng();
+    return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+  }
+
+  const defaults = {
+    vmax: 0.6, wmax: 90, kw: 2.5, hz: 10, lag: 0.4,
+    Ws: 33, range: 2.0, nrays: 48, noise: 0.02, spurious: 0.02, known: false,
+    Fct: 1.0, Fcr: 0.003,
+    tau: 150, l: 5, smax: 16, hm: 1200, footprint: true, fp: 1.0, beyond: true,
+  };
+
+  // ---------------- mundo ----------------
+  function makeWorld() {
+    return { occ: new Uint8Array(GW * GH), start: { x: 1, y: 2.8, th: 0 }, target: { x: 7, y: 2.8 } };
+  }
+  const idx = (i, j) => j * GW + i;
+  function cellAt(x, y) {
+    const i = Math.floor(x / CS), j = Math.floor(y / CS);
+    if (i < 0 || j < 0 || i >= GW || j >= GH) return -1;
+    return idx(i, j);
+  }
+  function border(w) {
+    for (let i = 0; i < GW; i++) { w.occ[idx(i, 0)] = 1; w.occ[idx(i, GH - 1)] = 1; }
+    for (let j = 0; j < GH; j++) { w.occ[idx(0, j)] = 1; w.occ[idx(GW - 1, j)] = 1; }
+  }
+  function rect(w, x0, y0, x1, y1, v = 1) {
+    const i0 = Math.round(x0 / CS), i1 = Math.round(x1 / CS), j0 = Math.round(y0 / CS), j1 = Math.round(y1 / CS);
+    for (let j = Math.max(0, j0); j < Math.min(GH, j1); j++)
+      for (let i = Math.max(0, i0); i < Math.min(GW, i1); i++) w.occ[idx(i, j)] = v;
+  }
+  function disk(w, cx, cy, r, v = 1) {
+    for (let j = 0; j < GH; j++) for (let i = 0; i < GW; i++) {
+      const x = (i + 0.5) * CS, y = (j + 0.5) * CS;
+      if ((x - cx) ** 2 + (y - cy) ** 2 <= r * r) w.occ[idx(i, j)] = v;
+    }
+  }
+
+  // Escenarios (coordenadas en metros, y hacia abajo en pantalla)
+  const presets = {
+    muro: {
+      name: 'Muro frente al objetivo',
+      build(w) {
+        rect(w, 4.0, 1.4, 4.2, 4.2);
+        w.start = { x: 1.0, y: 2.8, th: 0 }; w.target = { x: 7.0, y: 2.8 };
+      },
+    },
+    trampaU: {
+      name: 'Trampa en U',
+      build(w) {
+        rect(w, 3.4, 1.5, 5.6, 1.7);
+        rect(w, 3.4, 3.9, 5.6, 4.1);
+        rect(w, 5.4, 1.5, 5.6, 4.1);
+        w.start = { x: 1.0, y: 2.8, th: 0 }; w.target = { x: 7.0, y: 2.8 };
+      },
+    },
+    puerta: {
+      name: 'Pasar por una puerta',
+      build(w) {
+        rect(w, 3.9, 0, 4.1, 2.4);
+        rect(w, 3.9, 3.2, 4.1, WH);
+        w.start = { x: 1.0, y: 1.2, th: 0 }; w.target = { x: 6.6, y: 4.3 };
+      },
+    },
+    pasillo: {
+      name: 'Pasillo estrecho',
+      build(w) {
+        rect(w, 2.0, 0, 6.8, 2.1);
+        rect(w, 2.0, 3.5, 6.8, WH);
+        w.start = { x: 0.6, y: 1.4, th: 0 }; w.target = { x: 7.4, y: 2.8 };
+      },
+    },
+    bosque: {
+      name: 'Campo de obstáculos',
+      build(w) {
+        const r = mulberry(w.forestSeed || 3);
+        let n = 0, tries = 0;
+        while (n < 15 && tries < 500) {
+          tries++;
+          const cx = 1.8 + r() * 4.6, cy = 0.6 + r() * 4.4, rad = 0.12 + r() * 0.2;
+          if (Math.hypot(cx - 0.8, cy - 2.8) < 1 || Math.hypot(cx - 7.2, cy - 2.8) < 0.8) continue;
+          if (r() < 0.5) disk(w, cx, cy, rad); else rect(w, cx - rad, cy - rad, cx + rad, cy + rad);
+          n++;
+        }
+        w.start = { x: 0.8, y: 2.8, th: 0 }; w.target = { x: 7.2, y: 2.8 };
+      },
+    },
+    oficina: {
+      name: 'Oficina (dos salas, dos puertas)',
+      build(w) {
+        // tabique con una puerta ancha (arriba) y una estrecha (abajo)
+        rect(w, 4.0, 0, 4.2, 0.9);
+        rect(w, 4.0, 2.1, 4.2, 3.9);
+        rect(w, 4.0, 4.6, 4.2, WH);
+        // mobiliario
+        rect(w, 1.6, 2.2, 2.6, 2.8);
+        rect(w, 0.6, 4.2, 1.4, 5.0);
+        rect(w, 5.6, 0.8, 6.6, 1.4);
+        disk(w, 6.0, 3.3, 0.3);
+        w.start = { x: 0.8, y: 1.2, th: 0 }; w.target = { x: 6.8, y: 4.3 };
+      },
+    },
+    vacio: {
+      name: 'Vacío (pinta tus obstáculos)',
+      build(w) { w.start = { x: 1.0, y: 2.8, th: 0 }; w.target = { x: 7.0, y: 2.8 }; },
+    },
+  };
+
+  function loadPreset(w, key) {
+    w.occ.fill(0);
+    border(w);
+    presets[key].build(w);
+  }
+
+  // ---------------- robot ----------------
+  function makeRobot(alg, s) {
+    return {
+      alg, x: s.x, y: s.y, th: s.th, grid: new Float32Array(GW * GH),
+      cmd: undefined, ctrlT: 0,
+      trail: [[s.x, s.y]], t: 0, dist: 0, v: 0, w: 0, state: 'run', stuck: false,
+      collisions: 0, posLog: [], rays: [], forces: null, hist: null, lastTrail: 0,
+      flips: 0, lastSign: 0,
+    };
+  }
+  function resetRobot(r, s) { Object.assign(r, makeRobot(r.alg, s)); }
+
+  function collides(w, x, y) {
+    if (x < RR || y < RR || x > WW - RR || y > WH - RR) return true;
+    const i0 = Math.floor((x - RR) / CS), i1 = Math.floor((x + RR) / CS);
+    const j0 = Math.floor((y - RR) / CS), j1 = Math.floor((y + RR) / CS);
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+      if (i < 0 || j < 0 || i >= GW || j >= GH) return true;
+      if (!w.occ[idx(i, j)]) continue;
+      const nx = clamp(x, i * CS, (i + 1) * CS), ny = clamp(y, j * CS, (j + 1) * CS);
+      if ((nx - x) ** 2 + (ny - y) ** 2 < RR * RR) return true;
+    }
+    return false;
+  }
+
+  // Sensor de rango (anillo de N haces) + mapa HIMM (+3 en el impacto, -1 a lo largo del haz)
+  function sense(r, w, P) {
+    r.rays.length = 0;
+    const n = P.nrays, step = 0.02;
+    if (P.known) for (let k = 0; k < w.occ.length; k++) r.grid[k] = w.occ[k] ? CMAX : 0;
+    for (let k = 0; k < n; k++) {
+      const a = r.th + k * 2 * Math.PI / n;
+      const ca = Math.cos(a), sa = -Math.sin(a);
+      let hitD = P.range, hit = false;
+      for (let s = step; s <= P.range; s += step) {
+        const c = cellAt(r.x + ca * s, r.y + sa * s);
+        if (c < 0 || w.occ[c]) { hitD = s; hit = true; break; }
+      }
+      let m = hitD;
+      if (hit) m += gauss() * P.noise;
+      if (rng() < P.spurious && hitD > 0.2) { m = 0.15 + rng() * (hitD - 0.2); hit = true; }   // eco espurio (más corto que el real)
+      m = clamp(m, 0.05, P.range);
+      const isHit = hit && m < P.range;
+      r.rays.push([a, m, isHit]);
+      if (P.known) continue;
+      const hc = isHit ? cellAt(r.x + ca * m, r.y + sa * m) : -2;
+      let last = -3;
+      for (let s = 0; s < m; s += CS * 0.4) {
+        const c = cellAt(r.x + ca * s, r.y + sa * s);
+        if (c >= 0 && c !== last && c !== hc) { r.grid[c] = Math.max(0, r.grid[c] - 1); last = c; }
+      }
+      if (hc >= 0) r.grid[hc] = Math.min(CMAX, r.grid[hc] + 3);
+    }
+  }
+
+  function forWindow(r, P, fn, tgt) {
+    const h = (P.Ws - 1) / 2;
+    const lim = P.beyond && tgt ? (Math.hypot(tgt.x - r.x, tgt.y - r.y) + 0.3) ** 2 : Infinity;
+    const ci = Math.floor(r.x / CS), cj = Math.floor(r.y / CS);
+    for (let j = cj - h; j <= cj + h; j++) {
+      if (j < 0 || j >= GH) continue;
+      for (let i = ci - h; i <= ci + h; i++) {
+        if (i < 0 || i >= GW) continue;
+        const c = r.grid[idx(i, j)];
+        if (c <= 0) continue;
+        const x = (i + 0.5) * CS, y = (j + 0.5) * CS;
+        if ((x - r.x) ** 2 + (y - r.y) ** 2 > lim) continue;
+        fn(x, y, c);
+      }
+    }
+  }
+
+  // ---------------- VFF ----------------
+  function vff(r, w, P) {
+    let frx = 0, fry = 0;
+    forWindow(r, P, (cx, cy, c) => {
+      const dx = r.x - cx, dy = r.y - cy;
+      const d = Math.max(Math.hypot(dx, dy), 0.05);
+      const f = P.Fcr * c / (d * d);
+      frx += f * dx / d; fry += f * dy / d;
+    }, w.target);
+    const tx = w.target.x - r.x, ty = w.target.y - r.y, dt = Math.max(Math.hypot(tx, ty), 1e-6);
+    const ftx = P.Fct * tx / dt, fty = P.Fct * ty / dt;
+    const Rx = ftx + frx, Ry = fty + fry, Rm = Math.hypot(Rx, Ry);
+    r.forces = { ft: [ftx, fty], fr: [frx, fry], R: [Rx, Ry] };
+    return { theta: Math.atan2(-Ry, Rx), vscale: Math.min(1, Rm / P.Fct) };
+  }
+
+  // ---------------- VFH ----------------
+  const secAngle = s => (s + 0.5) * ALPHA * D2R;  // ángulo (rad) del centro del sector s (puede ser fraccionario)
+  const secOf = a => mod(Math.floor(mod(a / D2R, 360) / ALPHA), NSEC);
+  const cdist = (a, b) => { const d = mod(a - b, NSEC); return Math.min(d, NSEC - d); };
+
+  function vfh(r, w, P) {
+    const h = new Float64Array(NSEC), hs = new Float64Array(NSEC);
+    const dmax = (P.Ws - 1) / 2 * Math.SQRT2 * CS;
+    forWindow(r, P, (cx, cy, c) => {
+      const dx = cx - r.x, dy = cy - r.y, d = Math.hypot(dx, dy);
+      const m = c * c * (dmax - d);           // m = c² (a - b·d), con b = 1, a = dmax
+      if (m <= 0) return;
+      const beta = Math.atan2(-dy, dx);
+      if (P.footprint) {
+        // la celda ocupa un ángulo ±atan(CS/2 / d): se suma a todos los sectores que cubre
+        const rad = CS * P.fp;
+        const hw = d > rad ? Math.asin(rad / d) : Math.PI / 2;
+        const k0 = Math.floor(mod((beta - hw) / D2R, 360) / ALPHA);
+        const n = Math.max(1, Math.floor(2 * hw / D2R / ALPHA) + 1);
+        for (let q = 0; q < n; q++) h[mod(k0 + q, NSEC)] += m;
+      } else h[secOf(beta)] += m;
+    }, w.target);
+    const l = P.l;
+    let wsum = 0; for (let i = -l; i <= l; i++) wsum += l + 1 - Math.abs(i);
+    for (let k = 0; k < NSEC; k++) {
+      let s = 0;
+      for (let i = -l; i <= l; i++) s += (l + 1 - Math.abs(i)) * h[mod(k + i, NSEC)];
+      hs[k] = s / wsum;
+    }
+    const free = Array.from(hs, v => v < P.tau);
+    const tx = w.target.x - r.x, ty = w.target.y - r.y;
+    const tAng = Math.atan2(-ty, tx);
+    const kt = secOf(tAng);
+
+    // valles (rachas circulares de sectores libres)
+    const valleys = [];
+    const b0 = free.indexOf(false);
+    if (b0 >= 0) {
+      let k = 0;
+      while (k < NSEC) {
+        const s = mod(b0 + 1 + k, NSEC);
+        if (free[s]) {
+          let len = 0;
+          while (k < NSEC && free[mod(b0 + 1 + k, NSEC)]) { len++; k++; }
+          valleys.push({ start: s, len });
+        } else k++;
+      }
+    }
+
+    let theta = null, sel = null, mode = '';
+    if (b0 < 0) { theta = tAng; mode = 'todo libre'; }
+    else if (valleys.length) {
+      const inV = v => mod(kt - v.start, NSEC) < v.len;
+      let V = valleys.find(inV);
+      if (V) {
+        const dS = mod(kt - V.start, NSEC), dE = V.len - 1 - dS;
+        if (V.len > P.smax) {
+          if (dS >= P.smax / 2 && dE >= P.smax / 2) { theta = tAng; mode = 'directo al objetivo'; }
+          else if (dS < dE) { theta = secAngle(V.start + P.smax / 2); mode = 'valle ancho (borde)'; }
+          else { theta = secAngle(V.start + V.len - 1 - P.smax / 2); mode = 'valle ancho (borde)'; }
+        } else { theta = secAngle(V.start + (V.len - 1) / 2); mode = 'valle estrecho (centro)'; }
+        sel = V;
+      } else {
+        let best = null, bd = 1e9, bside = 0;
+        for (const v of valleys) {
+          const e = v.start + v.len - 1;
+          const d1 = cdist(kt, v.start), d2 = cdist(kt, e);
+          if (d1 < bd) { bd = d1; best = v; bside = 0; }
+          if (d2 < bd) { bd = d2; best = v; bside = 1; }
+        }
+        sel = best;
+        if (best.len > P.smax) {
+          theta = bside === 0 ? secAngle(best.start + P.smax / 2) : secAngle(best.start + best.len - 1 - P.smax / 2);
+          mode = 'valle ancho (borde)';
+        } else { theta = secAngle(best.start + (best.len - 1) / 2); mode = 'valle estrecho (centro)'; }
+      }
+    }
+    const hc = hs[secOf(r.th)];
+    r.hist = { h, hs, free, kt, theta, valleys, sel, mode, hc };
+    return { theta, vscale: 1 - Math.min(hc, P.hm) / P.hm };
+  }
+
+  // ---------------- paso de simulación ----------------
+  function step(r, w, P, dt) {
+    if (r.state === 'goal') { r.v = r.w = 0; return; }
+    const wmax = P.wmax * D2R;
+    // ciclo de control a frecuencia finita (sensores + decisión)
+    r.ctrlT = (r.ctrlT || 0) + dt;
+    if (r.cmd === undefined || r.ctrlT >= 1 / P.hz - 1e-9) {
+      r.ctrlT = 0;
+      sense(r, w, P);
+      const dec = r.alg === 'VFF' ? vff(r, w, P) : vfh(r, w, P);
+      if (dec.theta === null) { r.cmd = { v: 0, w: wmax }; r.state = 'novalley'; }
+      else {
+        r.state = 'run';
+        const err = wrap(dec.theta - r.th);
+        r.cmd = { v: P.vmax * dec.vscale * Math.max(0, Math.cos(err)), w: clamp(P.kw * err, -wmax, wmax) };
+      }
+    }
+    // dinámica de primer orden (inercia) en v y ω
+    const a = P.lag > 0 ? Math.min(1, dt / P.lag) : 1;
+    let v = r.v + (r.cmd.v - r.v) * a;
+    const om = r.w + (r.cmd.w - r.w) * a;
+    // contador de cambios de sentido de giro (indicador de oscilación)
+    const sg = Math.abs(om) > 0.15 ? Math.sign(om) : 0;
+    if (sg !== 0) { if (r.lastSign !== 0 && sg !== r.lastSign) r.flips++; r.lastSign = sg; }
+
+    const nth = wrap(r.th + om * dt);
+    const nx = r.x + v * Math.cos(nth) * dt, ny = r.y - v * Math.sin(nth) * dt;
+    r.th = nth;
+    r.colliding = false;
+    let mx = nx, my = ny;
+    if (v > 0 && collides(w, mx, my)) {
+      r.collisions++; r.colliding = true;
+      // deslizamiento: intenta moverse sólo en x o sólo en y
+      if (!collides(w, nx, r.y)) { mx = nx; my = r.y; }
+      else if (!collides(w, r.x, ny)) { mx = r.x; my = ny; }
+      else { mx = r.x; my = r.y; v = 0; }
+    }
+    r.dist += Math.hypot(mx - r.x, my - r.y); r.x = mx; r.y = my;
+    r.v = v; r.w = om; r.t += dt;
+
+    const lt = r.trail[r.trail.length - 1];
+    if (Math.hypot(r.x - lt[0], r.y - lt[1]) > 0.02) { r.trail.push([r.x, r.y]); if (r.trail.length > 6000) r.trail.shift(); }
+
+    if (Math.hypot(w.target.x - r.x, w.target.y - r.y) < 0.2) { r.state = 'goal'; r.stuck = false; r.v = r.w = 0; return; }
+
+    // detección de atasco: en los últimos 6 s no se ha alejado más de 0.35 m
+    if (r.t - (r.posLog.length ? r.posLog[r.posLog.length - 1][0] : -1) >= 0.5) {
+      r.posLog.push([r.t, r.x, r.y]);
+      while (r.posLog.length && r.posLog[0][0] < r.t - 6) r.posLog.shift();
+    }
+    if (r.t > 6 && r.posLog.length > 8) {
+      let maxd = 0;
+      for (const p of r.posLog) maxd = Math.max(maxd, Math.hypot(p[1] - r.x, p[2] - r.y));
+      r.stuck = maxd < 0.35;
+    } else r.stuck = false;
+  }
+
+  function seed(s) { rng = mulberry(s); }
+
+  return {
+    CS, GW, GH, WW, WH, NSEC, ALPHA, RR, CMAX, D2R, defaults, presets,
+    makeWorld, loadPreset, makeRobot, resetRobot, step, collides, cellAt, idx, secOf, secAngle, seed, wrap,
+  };
+})();
+if (typeof module !== 'undefined') module.exports = Sim;
+
+</script>
+<script>
+(() => {
+  const { CS, GW, GH, WW, WH, NSEC, ALPHA, RR, CMAX, D2R } = Sim;
+  const $ = s => document.querySelector(s);
+  const COL = { VFF: '#2563eb', VFH: '#b62fd0', goal: '#16a34a', ft: '#16a34a', fr: '#dc2626', R: '#1b1f2c' };
+
+  const HINTS = {
+    muro: ['Mínimo local frente a un muro', 'Muro simétrico entre robot y objetivo. En VFF, delante del muro la atracción y la repulsión se anulan (|R| ≈ 0): el robot frena y se queda parado en un mínimo local. VFH ve dos valles, por encima y por debajo del muro, elige uno y lo rodea.'],
+    trampaU: ['Trampa en U', 'La U está abierta hacia el robot. Los dos métodos son locales: solo ven la ventana activa, así que entran en la U y quedan atrapados (VFH puede quedarse dando vueltas dentro). Para salir hace falta un planificador global o un comportamiento de seguimiento de paredes.'],
+    puerta: ['Dificultad para pasar por puertas', 'Puerta de 0,8 m para un robot de 0,4 m de diámetro. En VFF, las dos jambas empujan a la vez y la resultante aparta al robot del hueco: no consigue entrar. VFH encuentra un valle estrecho y apunta a su centro. Prueba a bajar F_cr hasta que VFF consiga pasar, o a bajar τ / subir l hasta que el hueco desaparezca del histograma de VFH.'],
+    pasillo: ['Oscilaciones en un pasillo', 'Pasillo de 1,4 m. VFF entra, pero zigzaguea de pared a pared: en cuanto se desvía del centro, la fuerza lateral crece con 1/d² y lo devuelve con demasiada fuerza. Sube la velocidad máxima a ~1 m/s o la inercia (en «Robot, sensor y rejilla») y la oscilación crece. VFH sigue el centro del valle con una trayectoria mucho más suave.'],
+    bosque: ['Campo de obstáculos', 'Obstáculos dispersos. En VFF cada obstáculo cercano tuerce la resultante: el robot da bandazos (mira el contador de cambios de giro) y puede quedarse encajado entre dos obstáculos. VFH elige huecos entre ellos y avanza más recto. «Nuevo bosque» genera otra distribución.'],
+    oficina: ['Dos salas, dos puertas', 'Una puerta ancha (arriba) y otra estrecha (abajo). Mueve el objetivo por la sala derecha y observa qué puerta intenta usar cada método… y si lo consigue.'],
+    vacio: ['Mapa libre', 'Pinta tus propios obstáculos (clic derecho borra). Ideas: un muro con un hueco, un pasillo en L, una trampa en V. Prueba también a desactivar «Ignorar obstáculos más lejanos que el objetivo» y a dejar el objetivo cerca de una pared: el obstáculo de detrás impide llegar.'],
+  };
+
+  // ------------------------------------------------------------------ estado
+  const world = Sim.makeWorld();
+  let presetKey = 'puerta';
+  const P = Object.assign({}, Sim.defaults);
+  let algMode = 'Ambos';
+  let robots = [];
+  let running = false, simSpeed = 1, tool = 'paint', brush = 1;
+  const show = { real: true, cert: true, win: true, rays: false, forces: true, polar: true, trail: true };
+
+  function buildRobots() {
+    const algs = algMode === 'Ambos' ? ['VFF', 'VFH'] : [algMode];
+    robots = algs.map(a => Sim.makeRobot(a, world.start));
+    Sim.seed(1);
+  }
+  function resetRobots() { robots.forEach(r => Sim.resetRobot(r, world.start)); Sim.seed(1); }
+  function loadPreset(key) {
+    presetKey = key;
+    if (key === 'bosque') world.forestSeed = undefined;
+    Sim.loadPreset(world, key);
+    buildRobots();
+    setRunning(false);
+    $('#hintTitle').textContent = HINTS[key][0];
+    $('#hintText').textContent = HINTS[key][1];
+    $('#forestBtn').style.display = key === 'bosque' ? '' : 'none';
+  }
+
+  // ------------------------------------------------------------------ canvas mundo
+  const cv = $('#world'), ctx = cv.getContext('2d');
+  let S = 100, dpr = 1; // px CSS por metro
+  function resize() {
+    dpr = window.devicePixelRatio || 1;
+    const w = cv.clientWidth || 800;
+    S = w / WW;
+    cv.width = Math.round(w * dpr);
+    cv.height = Math.round(w * WH / WW * dpr);
+    cv.style.height = (w * WH / WW) + 'px';
+    const hc = $('#histo');
+    hc.width = Math.round(hc.clientWidth * dpr); hc.height = Math.round(hc.clientHeight * dpr);
+  }
+  window.addEventListener('resize', resize);
+
+  const px = n => n / S; // grosor en px → metros
+
+  function arrow(x0, y0, x1, y1, color, width, head = 0.09, dash) {
+    const a = Math.atan2(y1 - y0, x1 - x0), L = Math.hypot(x1 - x0, y1 - y0);
+    if (L < 0.01) return;
+    ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = px(width);
+    ctx.setLineDash(dash ? dash.map(px) : []);
+    ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1 - Math.cos(a) * head * 0.6, y1 - Math.sin(a) * head * 0.6); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.beginPath(); ctx.moveTo(x1, y1);
+    ctx.lineTo(x1 - head * Math.cos(a - 0.4), y1 - head * Math.sin(a - 0.4));
+    ctx.lineTo(x1 - head * Math.cos(a + 0.4), y1 - head * Math.sin(a + 0.4));
+    ctx.closePath(); ctx.fill();
+  }
+  function label(t, x, y, color, size = 12, align = 'left') {
+    ctx.save(); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.font = `600 ${size}px Jost, sans-serif`; ctx.textAlign = align; ctx.textBaseline = 'middle';
+    ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.strokeText(t, x * S, y * S);
+    ctx.fillStyle = color; ctx.fillText(t, x * S, y * S); ctx.restore();
+  }
+
+  function draw() {
+    ctx.setTransform(dpr * S, 0, 0, dpr * S, 0, 0);
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, WW, WH);
+    // rejilla
+    ctx.lineWidth = px(1);
+    ctx.strokeStyle = '#eef1f7'; ctx.beginPath();
+    for (let i = 1; i < GW; i++) { ctx.moveTo(i * CS, 0); ctx.lineTo(i * CS, WH); }
+    for (let j = 1; j < GH; j++) { ctx.moveTo(0, j * CS); ctx.lineTo(WW, j * CS); }
+    ctx.stroke();
+    ctx.strokeStyle = '#dde2ee'; ctx.beginPath();
+    for (let i = 10; i < GW; i += 10) { ctx.moveTo(i * CS, 0); ctx.lineTo(i * CS, WH); }
+    for (let j = 10; j < GH; j += 10) { ctx.moveTo(0, j * CS); ctx.lineTo(WW, j * CS); }
+    ctx.stroke();
+
+    // obstáculos reales
+    if (show.real) {
+      ctx.fillStyle = '#a9b0bf';
+      for (let j = 0; j < GH; j++) for (let i = 0; i < GW; i++)
+        if (world.occ[j * GW + i]) ctx.fillRect(i * CS, j * CS, CS + 0.002, CS + 0.002);
+    }
+    // valores de certeza (máximo de los robots activos)
+    if (show.cert) {
+      const ins = 0.012;
+      for (let k = 0; k < GW * GH; k++) {
+        let c = 0;
+        for (const r of robots) if (r.grid[k] > c) c = r.grid[k];
+        if (c <= 0) continue;
+        ctx.fillStyle = `rgba(234,106,12,${0.18 + 0.8 * c / CMAX})`;
+        ctx.fillRect((k % GW) * CS + ins, Math.floor(k / GW) * CS + ins, CS - 2 * ins, CS - 2 * ins);
+      }
+    }
+    // inicio
+    const s = world.start;
+    ctx.strokeStyle = '#9aa1b2'; ctx.lineWidth = px(1.5); ctx.setLineDash([px(4), px(3)]);
+    ctx.beginPath(); ctx.arc(s.x, s.y, RR, 0, 2 * Math.PI); ctx.stroke(); ctx.setLineDash([]);
+    arrow(s.x, s.y, s.x + Math.cos(s.th) * RR * 1.4, s.y - Math.sin(s.th) * RR * 1.4, '#9aa1b2', 1.5, 0.07);
+
+    for (const r of robots) {
+      const col = COL[r.alg];
+      // ventana activa
+      if (show.win) {
+        const h = (P.Ws - 1) / 2, ci = Math.floor(r.x / CS), cj = Math.floor(r.y / CS);
+        ctx.strokeStyle = col; ctx.globalAlpha = 0.55; ctx.lineWidth = px(1.3); ctx.setLineDash([px(6), px(4)]);
+        ctx.strokeRect((ci - h) * CS, (cj - h) * CS, P.Ws * CS, P.Ws * CS);
+        ctx.setLineDash([]); ctx.globalAlpha = 1;
+      }
+      // haces del sensor
+      if (show.rays && r.rays.length) {
+        ctx.strokeStyle = col; ctx.globalAlpha = 0.18; ctx.lineWidth = px(1);
+        ctx.beginPath();
+        for (const [a, m] of r.rays) { ctx.moveTo(r.x, r.y); ctx.lineTo(r.x + Math.cos(a) * m, r.y - Math.sin(a) * m); }
+        ctx.stroke(); ctx.globalAlpha = 0.8; ctx.fillStyle = col;
+        for (const [a, m, hit] of r.rays) if (hit) { ctx.beginPath(); ctx.arc(r.x + Math.cos(a) * m, r.y - Math.sin(a) * m, px(2), 0, 7); ctx.fill(); }
+        ctx.globalAlpha = 1;
+      }
+      // trayectoria
+      if (show.trail && r.trail.length > 1) {
+        ctx.strokeStyle = col; ctx.lineWidth = px(2.2); ctx.globalAlpha = 0.85; ctx.lineJoin = 'round';
+        ctx.beginPath(); ctx.moveTo(r.trail[0][0], r.trail[0][1]);
+        for (const p of r.trail) ctx.lineTo(p[0], p[1]);
+        ctx.lineTo(r.x, r.y); ctx.stroke(); ctx.globalAlpha = 1;
+      }
+    }
+
+    // histograma polar VFH alrededor del robot
+    for (const r of robots) {
+      if (r.alg !== 'VFH' || !show.polar || !r.hist || r.state === 'goal') continue;
+      const H = r.hist, r0 = RR + 0.03, Lmax = 1.0, scale = 0.5 / P.tau;
+      for (let k = 0; k < NSEC; k++) {
+        const L = Math.min(H.hs[k] * scale, Lmax);
+        const a0 = k * ALPHA * D2R, a1 = (k + 1) * ALPHA * D2R;
+        const blocked = !H.free[k];
+        ctx.fillStyle = blocked ? 'rgba(182,47,208,.33)' : 'rgba(120,130,150,.16)';
+        ctx.beginPath();
+        ctx.arc(r.x, r.y, r0 + Math.max(L, 0.03), -a0, -a1, true);
+        ctx.arc(r.x, r.y, r0, -a1, -a0, false);
+        ctx.closePath(); ctx.fill();
+      }
+      ctx.strokeStyle = 'rgba(220,38,38,.75)'; ctx.lineWidth = px(1.2); ctx.setLineDash([px(4), px(3)]);
+      ctx.beginPath(); ctx.arc(r.x, r.y, r0 + 0.5, 0, 2 * Math.PI); ctx.stroke(); ctx.setLineDash([]);
+      const ta = Math.atan2(-(world.target.y - r.y), world.target.x - r.x);
+      arrow(r.x, r.y, r.x + Math.cos(ta) * 1.0, r.y - Math.sin(ta) * 1.0, COL.goal, 1.6, 0.08, [5, 4]);
+      if (H.theta !== null) arrow(r.x, r.y, r.x + Math.cos(H.theta) * 1.15, r.y - Math.sin(H.theta) * 1.15, COL.VFH, 3, 0.12);
+    }
+
+    // fuerzas VFF
+    for (const r of robots) {
+      if (r.alg !== 'VFF' || !show.forces || !r.forces || r.state === 'goal') continue;
+      const k = 0.7 / P.Fct, cap = 2.2;
+      const vec = ([fx, fy]) => { const m = Math.hypot(fx, fy), L = Math.min(m * k, cap); return m > 1e-9 ? [fx / m * L, fy / m * L] : [0, 0]; };
+      const ft = vec(r.forces.ft), fr = vec(r.forces.fr), R = vec(r.forces.R);
+      arrow(r.x, r.y, r.x + ft[0], r.y + ft[1], COL.ft, 2.2, 0.09);
+      arrow(r.x, r.y, r.x + fr[0], r.y + fr[1], COL.fr, 2.2, 0.09);
+      arrow(r.x, r.y, r.x + R[0], r.y + R[1], COL.R, 3.2, 0.12);
+      label('Ft', r.x + ft[0] * 1.08 + 0.05, r.y + ft[1] * 1.08, COL.ft, 13);
+      if (Math.hypot(...fr) > 0.08) label('Fr', r.x + fr[0] * 1.08 + 0.05, r.y + fr[1] * 1.08, COL.fr, 13);
+      if (Math.hypot(...R) > 0.08) label('R', r.x + R[0] * 1.08 + 0.05, r.y + R[1] * 1.08, COL.R, 13);
+    }
+
+    // objetivo
+    const t = world.target;
+    ctx.fillStyle = 'rgba(22,163,74,.15)'; ctx.beginPath(); ctx.arc(t.x, t.y, 0.2, 0, 7); ctx.fill();
+    ctx.fillStyle = COL.goal; ctx.beginPath(); ctx.arc(t.x, t.y, 0.08, 0, 7); ctx.fill();
+    ctx.strokeStyle = COL.goal; ctx.lineWidth = px(2); ctx.beginPath(); ctx.arc(t.x, t.y, 0.14, 0, 7); ctx.stroke();
+    label('Objetivo', t.x, t.y - 0.3, COL.goal, 13, 'center');
+
+    // robots
+    robots.forEach((r, n) => {
+      const col = COL[r.alg];
+      ctx.fillStyle = r.colliding ? '#f6c3c3' : '#a7cfd1';
+      ctx.strokeStyle = r.colliding ? COL.fr : col; ctx.lineWidth = px(2.5);
+      ctx.beginPath(); ctx.arc(r.x, r.y, RR, 0, 7); ctx.fill(); ctx.stroke();
+      // ruedas
+      ctx.save(); ctx.translate(r.x, r.y); ctx.rotate(-r.th);
+      ctx.fillStyle = '#3d4352';
+      ctx.fillRect(-0.07, -RR - 0.015, 0.14, 0.04); ctx.fillRect(-0.07, RR - 0.025, 0.14, 0.04);
+      ctx.restore();
+      arrow(r.x, r.y, r.x + Math.cos(r.th) * RR * 1.05, r.y - Math.sin(r.th) * RR * 1.05, col, 2.5, 0.07);
+      const ly = r.y + RR + 0.14 + (robots.length > 1 && n === 1 ? 0.0 : 0);
+      label(r.alg, r.x + (robots.length > 1 ? (n === 0 ? -0.16 : 0.16) : 0), ly, col, 12, 'center');
+    });
+  }
+
+  // ------------------------------------------------------------------ histograma (panel)
+  const hcv = $('#histo'), hctx = hcv.getContext('2d');
+  function drawHisto() {
+    const W = hcv.width / dpr, H = hcv.height / dpr;
+    hctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    hctx.clearRect(0, 0, W, H);
+    const r = robots.find(q => q.alg === 'VFH');
+    $('#histPanel').style.opacity = r ? 1 : 0.45;
+    const L = 30, Rm = 8, T = 10, B = 34, pw = W - L - Rm, ph = H - T - B;
+    const ymax = P.tau * 3;
+    hctx.font = '11px JetBrains Mono, monospace'; hctx.fillStyle = '#646b80'; hctx.textAlign = 'center';
+    for (const d of [0, 90, 180, 270, 360]) hctx.fillText(d + '°', L + pw * d / 360, H - 6);
+    hctx.strokeStyle = '#c9cede'; hctx.lineWidth = 1;
+    hctx.beginPath(); hctx.moveTo(L, T); hctx.lineTo(L, T + ph); hctx.lineTo(L + pw, T + ph); hctx.stroke();
+    hctx.save(); hctx.translate(11, T + ph / 2); hctx.rotate(-Math.PI / 2); hctx.fillText("h'(k)", 0, 0); hctx.restore();
+    if (!r || !r.hist) {
+      hctx.fillStyle = '#646b80'; hctx.textAlign = 'center'; hctx.font = '13px Jost, sans-serif';
+      hctx.fillText(r ? 'Inicia la simulación' : 'Selecciona VFH o «Ambos»', L + pw / 2, T + ph / 2);
+      return;
+    }
+    const h = r.hist, bw = pw / NSEC;
+    // valles
+    hctx.fillStyle = 'rgba(22,163,74,.16)';
+    for (let k = 0; k < NSEC; k++) if (h.free[k]) hctx.fillRect(L + k * bw, T, bw + 0.5, ph);
+    for (let k = 0; k < NSEC; k++) {
+      const v = Math.min(h.hs[k], ymax), bh = ph * v / ymax;
+      hctx.fillStyle = h.free[k] ? '#8a93a8' : '#b62fd0';
+      hctx.fillRect(L + k * bw + 0.6, T + ph - bh, bw - 1.2, bh);
+      if (h.hs[k] > ymax) { hctx.fillStyle = '#b62fd0'; hctx.fillRect(L + k * bw + 0.6, T - 3, bw - 1.2, 2); }
+    }
+    const ty = T + ph - ph * P.tau / ymax;
+    hctx.strokeStyle = '#dc2626'; hctx.setLineDash([5, 4]); hctx.lineWidth = 1.4;
+    hctx.beginPath(); hctx.moveTo(L, ty); hctx.lineTo(L + pw, ty); hctx.stroke(); hctx.setLineDash([]);
+    hctx.fillStyle = '#dc2626'; hctx.textAlign = 'right'; hctx.fillText('τ', L - 4, ty + 4);
+    const tri = (deg, col, y, up = true) => {
+      const x = L + pw * (((deg % 360) + 360) % 360) / 360;
+      hctx.fillStyle = col; hctx.beginPath();
+      hctx.moveTo(x, y); hctx.lineTo(x - 5, y + (up ? 9 : -9)); hctx.lineTo(x + 5, y + (up ? 9 : -9)); hctx.closePath(); hctx.fill();
+    };
+    const tdeg = Math.atan2(-(world.target.y - r.y), world.target.x - r.x) / D2R;
+    tri(tdeg, '#16a34a', T + ph + 2);
+    if (h.theta !== null) tri(h.theta / D2R, '#b62fd0', T + ph + 2);
+    const hx = L + pw * ((((r.th / D2R) % 360) + 360) % 360) / 360;
+    hctx.strokeStyle = '#1b1f2c'; hctx.lineWidth = 2; hctx.beginPath(); hctx.moveTo(hx, T); hctx.lineTo(hx, T + ph); hctx.stroke();
+  }
+
+  // ------------------------------------------------------------------ estado (tarjetas)
+  function statusOf(r) {
+    if (r.state === 'goal') return ['goal', '¡Objetivo alcanzado!'];
+    if (r.state === 'novalley') return ['bad', 'Sin valle libre: gira'];
+    if (r.stuck) return ['stuck', 'Atascado (¿mínimo local?)'];
+    if (r.colliding) return ['bad', '¡Choque!'];
+    return ['run', running ? 'Navegando' : 'En pausa'];
+  }
+  const fmt = (v, d = 2) => (Math.abs(v) < 1e-9 ? 0 : v).toFixed(d);
+  function renderStatus() {
+    const box = $('#statusBox');
+    let html = '';
+    for (const r of robots) {
+      const [cls, txt] = statusOf(r);
+      let extra = '';
+      if (r.alg === 'VFF' && r.forces) {
+        const m = v => Math.hypot(v[0], v[1]);
+        extra = `|F<sub>t</sub>| ${fmt(m(r.forces.ft))} · |F<sub>r</sub>| ${fmt(m(r.forces.fr))} · |R| ${fmt(m(r.forces.R))}`;
+      }
+      if (r.alg === 'VFH' && r.hist) {
+        const h = r.hist;
+        extra = (h.mode === 'todo libre' ? 'sin obstáculos en la ventana' : `${h.valleys.length} valle${h.valleys.length === 1 ? '' : 's'} · ${h.mode || '—'}`) + (h.theta !== null ? ` · θ=${fmt(((h.theta / D2R) % 360 + 360) % 360, 0)}°` : '');
+      }
+      html += `<div class="card status" style="border-left:4px solid ${COL[r.alg]}">
+        <div class="head"><span class="name" style="color:${COL[r.alg]}">${r.alg}</span><span class="pill ${cls}">${txt}</span></div>
+        <div class="nums">t ${fmt(r.t, 1)} s · recorrido ${fmt(r.dist, 1)} m · v ${fmt(r.v)} m/s · ω ${fmt(r.w / D2R, 0)}°/s<br>
+        cambios de sentido de giro: ${r.flips}${r.collisions ? ` · contactos: ${r.collisions}` : ''}<br>${extra}</div></div>`;
+    }
+    if (box.innerHTML !== html) box.innerHTML = html;
+  }
+
+  // ------------------------------------------------------------------ simulación
+  const DT = 0.05;
+  let acc = 0, last = performance.now();
+  function stepAll() { for (const r of robots) Sim.step(r, world, P, DT); }
+  function setRunning(v) {
+    running = v;
+    $('#runBtn').textContent = running ? '❚❚ Pausa' : '▶ Iniciar';
+  }
+  function frame(now) {
+    const el = Math.min((now - last) / 1000, 0.1); last = now;
+    if (running) {
+      acc += el * simSpeed;
+      let n = 0;
+      while (acc >= DT && n < 200) { stepAll(); acc -= DT; n++; }
+      if (robots.every(r => r.state === 'goal')) setRunning(false);
+    }
+    draw(); drawHisto(); renderStatus();
+    requestAnimationFrame(frame);
+  }
+
+  // ------------------------------------------------------------------ ratón
+  let drag = null;
+  function toWorld(e) {
+    const b = cv.getBoundingClientRect();
+    return { x: (e.clientX - b.left) / b.width * WW, y: (e.clientY - b.top) / b.height * WH };
+  }
+  function paint(p, val) {
+    const ci = Math.floor(p.x / CS), cj = Math.floor(p.y / CS);
+    for (let j = cj - brush; j <= cj + brush; j++) for (let i = ci - brush; i <= ci + brush; i++) {
+      if (i < 0 || j < 0 || i >= GW || j >= GH) continue;
+      const x = (i + 0.5) * CS, y = (j + 0.5) * CS;
+      if (val) {
+        if (robots.some(r => Math.hypot(r.x - x, r.y - y) < RR + 0.08)) continue;
+        if (Math.hypot(world.target.x - x, world.target.y - y) < 0.12) continue;
+      }
+      const k = j * GW + i;
+      world.occ[k] = val;
+      if (!val) robots.forEach(r => { r.grid[k] = 0; });
+    }
+  }
+  function placeStart(x, y, th) {
+    x = Math.min(Math.max(x, RR + 0.1), WW - RR - 0.1); y = Math.min(Math.max(y, RR + 0.1), WH - RR - 0.1);
+    world.start = { x, y, th: th === undefined ? world.start.th : th };
+    resetRobots();
+  }
+  function targetMoved() { robots.forEach(r => { if (r.state === 'goal') r.state = 'run'; r.posLog = []; r.stuck = false; }); }
+
+  cv.addEventListener('contextmenu', e => e.preventDefault());
+  cv.addEventListener('pointerdown', e => {
+    cv.setPointerCapture(e.pointerId);
+    const p = toWorld(e);
+    if (e.button === 2) { drag = { kind: 'erase' }; paint(p, 0); return; }
+    if (Math.hypot(p.x - world.target.x, p.y - world.target.y) < 0.28) { drag = { kind: 'target' }; return; }
+    if (robots.some(r => Math.hypot(p.x - r.x, p.y - r.y) < RR + 0.06)) { drag = { kind: 'robotMove' }; placeStart(p.x, p.y); return; }
+    if (tool === 'paint') { drag = { kind: 'paint' }; paint(p, 1); }
+    else if (tool === 'erase') { drag = { kind: 'erase' }; paint(p, 0); }
+    else if (tool === 'target') { drag = { kind: 'target' }; world.target = p; targetMoved(); }
+    else if (tool === 'robot') { drag = { kind: 'robotAim', x0: p.x, y0: p.y }; placeStart(p.x, p.y); }
+  });
+  cv.addEventListener('pointermove', e => {
+    const p = toWorld(e);
+    if (!drag) {
+      const near = Math.hypot(p.x - world.target.x, p.y - world.target.y) < 0.28 || robots.some(r => Math.hypot(p.x - r.x, p.y - r.y) < RR + 0.06);
+      cv.style.cursor = near ? 'grab' : 'crosshair';
+      return;
+    }
+    if (drag.kind === 'paint') paint(p, 1);
+    else if (drag.kind === 'erase') paint(p, 0);
+    else if (drag.kind === 'target') { world.target = { x: Math.min(Math.max(p.x, 0.1), WW - 0.1), y: Math.min(Math.max(p.y, 0.1), WH - 0.1) }; targetMoved(); }
+    else if (drag.kind === 'robotMove') placeStart(p.x, p.y);
+    else if (drag.kind === 'robotAim') {
+      if (Math.hypot(p.x - drag.x0, p.y - drag.y0) > 0.1) { world.start.th = Math.atan2(-(p.y - drag.y0), p.x - drag.x0); resetRobots(); }
+    }
+  });
+  const endDrag = () => { drag = null; };
+  cv.addEventListener('pointerup', endDrag);
+  cv.addEventListener('pointercancel', endDrag);
+
+  // ------------------------------------------------------------------ controles
+  const presetSel = $('#preset');
+  for (const [k, v] of Object.entries(Sim.presets)) {
+    const o = document.createElement('option'); o.value = k; o.textContent = v.name; presetSel.appendChild(o);
+  }
+  presetSel.value = presetKey;
+  presetSel.onchange = () => loadPreset(presetSel.value);
+
+  document.querySelectorAll('#algSeg button').forEach(b => b.onclick = () => {
+    algMode = b.dataset.alg;
+    document.querySelectorAll('#algSeg button').forEach(x => x.classList.toggle('on', x === b));
+    buildRobots();
+  });
+  $('#runBtn').onclick = () => {
+    if (!running && robots.every(r => r.state === 'goal')) resetRobots();
+    setRunning(!running);
+  };
+  $('#stepBtn').onclick = () => {
+    setRunning(false);
+    const n = Math.max(1, Math.round(1 / P.hz / DT));
+    for (let i = 0; i < n; i++) stepAll();
+  };
+  $('#resetBtn').onclick = () => { resetRobots(); setRunning(false); };
+  $('#simSpeed').onchange = e => { simSpeed = +e.target.value; };
+  $('#brush').onchange = e => { brush = +e.target.value; };
+  document.querySelectorAll('.tool').forEach(b => b.onclick = () => {
+    tool = b.dataset.tool;
+    document.querySelectorAll('.tool').forEach(x => x.classList.toggle('on', x === b));
+  });
+  $('#clearBtn').onclick = () => {
+    world.occ.fill(0);
+    for (let i = 0; i < GW; i++) { world.occ[i] = 1; world.occ[(GH - 1) * GW + i] = 1; }
+    for (let j = 0; j < GH; j++) { world.occ[j * GW] = 1; world.occ[j * GW + GW - 1] = 1; }
+    robots.forEach(r => r.grid.fill(0));
+  };
+  $('#forestBtn').onclick = () => {
+    world.forestSeed = 1 + Math.floor(Math.random() * 100000);
+    const st = world.start, tg = world.target;
+    Sim.loadPreset(world, 'bosque'); world.start = st; world.target = tg;
+    resetRobots(); setRunning(false);
+  };
+  window.addEventListener('keydown', e => {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+    if (e.code === 'Space') { e.preventDefault(); $('#runBtn').click(); }
+    else if (e.key === 's' || e.key === 'S') $('#stepBtn').click();
+    else if (e.key === 'r' || e.key === 'R') $('#resetBtn').click();
+  });
+
+  // sliders
+  const sliders = [];
+  function slider(box, key, name, min, max, step, show) {
+    const row = document.createElement('div'); row.className = 'row';
+    row.innerHTML = `<span>${name}</span><input type="range" min="${min}" max="${max}" step="${step}"><span class="val"></span>`;
+    const inp = row.querySelector('input'), val = row.querySelector('.val');
+    const upd = () => { val.textContent = show(P[key]); };
+    inp.value = P[key]; upd();
+    inp.oninput = () => { P[key] = +inp.value; upd(); };
+    $(box).appendChild(row);
+    sliders.push(() => { inp.value = P[key]; upd(); });
+  }
+  function check(box, key, name, obj = P, onchange) {
+    const l = document.createElement('label'); l.className = 'chk';
+    l.innerHTML = `<input type="checkbox"> ${name}`;
+    const c = l.querySelector('input'); c.checked = obj[key];
+    c.onchange = () => { obj[key] = c.checked; onchange && onchange(); };
+    $(box).appendChild(l);
+    if (obj === P) sliders.push(() => { c.checked = P[key]; });
+  }
+  function note(box, html) { const p = document.createElement('p'); p.className = 'small'; p.innerHTML = html; $(box).appendChild(p); }
+
+  check('#visBox', 'real', 'Obstáculos reales', show);
+  check('#visBox', 'cert', 'Rejilla de certeza (lo que ha visto el robot)', show);
+  check('#visBox', 'win', 'Ventana activa', show);
+  check('#visBox', 'rays', 'Haces del sensor', show);
+  check('#visBox', 'forces', 'Fuerzas VFF (F<sub>t</sub>, F<sub>r</sub>, R)', show);
+  check('#visBox', 'polar', 'Histograma polar VFH sobre el robot', show);
+  check('#visBox', 'trail', 'Trayectorias', show);
+
+  slider('#vffBox', 'Fcr', 'F<sub>cr</sub> repulsión', 0.0005, 0.012, 0.0005, v => v.toFixed(4));
+  slider('#vffBox', 'Fct', 'F<sub>ct</sub> atracción', 0.2, 3, 0.1, v => v.toFixed(1));
+  note('#vffBox', 'Al subir F<sub>cr</sub> el robot se separa más de los obstáculos, pero entra peor por los huecos.');
+
+  slider('#vfhBox', 'tau', 'Umbral τ', 40, 800, 10, v => v.toFixed(0));
+  slider('#vfhBox', 'l', 'Suavizado l', 0, 10, 1, v => v.toFixed(0) + ' sect.');
+  slider('#vfhBox', 'smax', 's<sub>max</sub> valle ancho', 4, 30, 1, v => `${v} (${v * ALPHA}°)`);
+  slider('#vfhBox', 'hm', 'h<sub>m</sub> frenado', 200, 3000, 50, v => v.toFixed(0));
+  note('#vfhBox', 'Con τ alto el robot ve más huecos y se acerca más a los obstáculos; con τ bajo, las puertas desaparecen del histograma.');
+
+  slider('#robBox', 'vmax', 'Velocidad máx.', 0.2, 1.2, 0.05, v => v.toFixed(2) + ' m/s');
+  slider('#robBox', 'wmax', 'Giro máx.', 30, 180, 5, v => v.toFixed(0) + '°/s');
+  slider('#robBox', 'kw', 'Ganancia de giro', 0.5, 6, 0.1, v => v.toFixed(1));
+  slider('#robBox', 'lag', 'Inercia (const. de tiempo)', 0, 1, 0.05, v => v.toFixed(2) + ' s');
+  slider('#robBox', 'hz', 'Frecuencia de control', 2, 20, 1, v => v.toFixed(0) + ' Hz');
+  slider('#robBox', 'Ws', 'Ventana activa', 11, 51, 2, v => `${v} celdas`);
+  slider('#robBox', 'range', 'Alcance del sensor', 0.8, 3, 0.1, v => v.toFixed(1) + ' m');
+  slider('#robBox', 'nrays', 'Nº de haces', 8, 120, 4, v => v.toFixed(0));
+  slider('#robBox', 'noise', 'Ruido de rango σ', 0, 0.15, 0.01, v => v.toFixed(2) + ' m');
+  slider('#robBox', 'spurious', 'Lecturas espurias', 0, 0.3, 0.01, v => (v * 100).toFixed(0) + ' %');
+  check('#robBox', 'known', 'Mapa conocido (sin sensores: C = 15 en todo obstáculo)', P, () => robots.forEach(r => r.grid.fill(0)));
+  check('#robBox', 'beyond', 'Ignorar obstáculos más lejanos que el objetivo', P);
+  note('#robBox', 'Celdas de 10 cm. Rejilla de certeza HIMM: cada lectura suma +3 a la celda del impacto y resta −1 a las celdas que atraviesa el haz (C entre 0 y 15).');
+
+  $('#defaultsBtn').onclick = () => { Object.assign(P, Sim.defaults); sliders.forEach(f => f()); };
+
+  // paneles de explicación plegables (se recuerda el estado en este navegador)
+  document.querySelectorAll('.foldable').forEach(card => {
+    const key = 'vffvfh-fold-' + card.dataset.fold, btn = card.querySelector('.fold-btn');
+    const set = f => { card.classList.toggle('folded', f); btn.textContent = f ? '+' : '−'; };
+    let f = false; try { f = localStorage.getItem(key) === '1'; } catch (e) {}
+    set(f);
+    btn.onclick = () => { const n = !card.classList.contains('folded'); set(n); try { localStorage.setItem(key, n ? '1' : '0'); } catch (e) {} };
+  });
+
+  // ------------------------------------------------------------------ inicio
+  loadPreset(presetKey);
+  resize();
+  requestAnimationFrame(frame);
+})();
+
+</script>
+</body>
+</html>
