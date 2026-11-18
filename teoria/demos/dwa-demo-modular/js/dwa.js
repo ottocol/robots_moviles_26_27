@@ -9,7 +9,8 @@
  *        vel:     la propia v.
  *   3. Se descartan los no admisibles (los que no pueden frenar antes del
  *      obstáculo), se normalizan los criterios y se puntúa
- *          G(v, ω) = α·heading + β·dist + γ·vel
+ *          G(v, ω) = σ(α·heading + β·dist + γ·vel)
+ *      donde σ es un suavizado opcional sobre la rejilla (v, ω).
  *   4. Se aplica el (v, ω) con mayor G.
  */
 
@@ -32,14 +33,19 @@ export function dynamicWindow(robot, p) {
   };
 }
 
-/** Rejilla de nV × nW pares (v, ω) dentro de la ventana. */
+/**
+ * Rejilla de nV × nW pares (v, ω) dentro de la ventana. Cada muestra guarda
+ * su fila (iv) y columna (iw) en la rejilla, que usa el suavizado σ.
+ */
 export function sampleWindow(win, nV, nW) {
   const samples = [];
-  for (let a = 0; a < nV; a++) {
-    for (let b = 0; b < nW; b++) {
+  for (let iv = 0; iv < nV; iv++) {
+    for (let iw = 0; iw < nW; iw++) {
       samples.push({
-        v: linspaceAt(win.vLo, win.vHi, nV, a),
-        w: linspaceAt(win.wLo, win.wHi, nW, b),
+        v: linspaceAt(win.vLo, win.vHi, nV, iv),
+        w: linspaceAt(win.wLo, win.wHi, nW, iw),
+        iv,
+        iw,
       });
     }
   }
@@ -54,11 +60,14 @@ export function sampleWindow(win, nV, nW) {
  * Recorre la curvatura hasta el primer choque del disco del robot.
  * Devuelve el índice de la pose de choque (-1 si no choca) y la distancia
  * libre recorrida (con tope dMax; un giro sobre sí mismo sin choque vale dMax).
+ * La distancia libre es la de la última pose SIN choque: contar hasta la
+ * pose que ya choca sobrestimaría el espacio en hasta un paso de muestreo.
  */
 export function freeDistanceAlong(path, grid, p) {
   for (let k = 0; k < path.length; k++) {
     if (grid.clearanceAt(path[k].x, path[k].y) < p.radius) {
-      return { collisionIndex: k, dist: Math.min(p.dMax, path[k].s) };
+      const lastFree = k === 0 ? 0 : path[k - 1].s;
+      return { collisionIndex: k, dist: Math.min(p.dMax, lastFree) };
     }
   }
   return { collisionIndex: -1, dist: p.dMax };
@@ -106,7 +115,8 @@ export function evaluateVelocity(robot, v, w, grid, goal, p) {
     headingPose: poseH,
     headingError,
     raw: { heading: Math.PI - headingError, dist, vel: v },
-    norm: null, // se rellena en scoreCandidates
+    norm: null, // se rellenan en scoreCandidates
+    sum: 0,
     G: 0,
   };
 }
@@ -135,27 +145,68 @@ export function criterionWeights(p) {
 }
 
 /**
- * Normaliza cada criterio a [0, 1], calcula G y devuelve el mejor admisible
- * (o null si no hay ninguno). Si todos los candidatos empatan en un
- * criterio, ese criterio vale 1 para todos: no discrimina.
+ * Normaliza cada criterio a [0, 1], calcula la suma ponderada, aplica (si
+ * está activado) el suavizado σ y devuelve el mejor admisible (o null si no
+ * hay ninguno). Si todos los candidatos empatan en un criterio, ese criterio
+ * vale 1 para todos: no discrimina.
+ *
+ * Cada candidato queda con:
+ *   c.sum  la suma ponderada α·heading + β·dist + γ·vel
+ *   c.G    la puntuación final: c.sum, o su versión suavizada si hay σ
  */
 export function scoreCandidates(candidates, p) {
   const admissible = candidates.filter((c) => c.admissible);
   const ranges = normalizationRanges(admissible, p);
   const weights = criterionWeights(p);
-  let best = null;
 
   for (const c of candidates) {
     c.norm = {};
-    c.G = 0;
+    c.sum = 0;
     for (const k of CRITERIA) {
       const { lo, hi } = ranges[k];
       c.norm[k] = hi - lo > 1e-9 ? clamp((c.raw[k] - lo) / (hi - lo), 0, 1) : 1;
-      c.G += weights[k] * c.norm[k];
+      c.sum += weights[k] * c.norm[k];
     }
-    if (c.admissible && (best === null || c.G > best.G)) best = c;
+    c.G = c.sum;
   }
+  if (p.smoothing) smoothScores(candidates);
+
+  let best = null;
+  for (const c of admissible) if (best === null || c.G > best.G) best = c;
   return best;
+}
+
+/** Núcleo 3 × 3 del suavizado (aproximación de una gaussiana). */
+const SMOOTHING_KERNEL = [
+  [1, 2, 1],
+  [2, 4, 2],
+  [1, 2, 1],
+];
+
+/**
+ * Suavizado σ del paper: la puntuación de cada par pasa a ser la media
+ * ponderada de la suya y la de sus vecinos en la rejilla (v, ω).
+ * Los pares no admisibles cuentan como 0, así que un par rodeado de pares
+ * que chocan pierde puntos: se prefieren curvaturas con margen a los lados.
+ * En el borde de la ventana solo se promedian los vecinos que existen.
+ */
+export function smoothScores(candidates) {
+  const at = new Map(candidates.map((c) => [`${c.iv},${c.iw}`, c]));
+  const value = (c) => (c.admissible ? c.sum : 0);
+  for (const c of candidates) {
+    let total = 0;
+    let weight = 0;
+    for (let dv = -1; dv <= 1; dv++) {
+      for (let dw = -1; dw <= 1; dw++) {
+        const neighbour = at.get(`${c.iv + dv},${c.iw + dw}`);
+        if (!neighbour) continue;
+        const k = SMOOTHING_KERNEL[dv + 1][dw + 1];
+        total += k * value(neighbour);
+        weight += k;
+      }
+    }
+    c.G = total / weight;
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -165,9 +216,11 @@ export function scoreCandidates(candidates, p) {
 /** Un ciclo de DWA: ventana, candidatos evaluados y el mejor. */
 export function planDwa(robot, grid, goal, p) {
   const window = dynamicWindow(robot, p);
-  const candidates = sampleWindow(window, p.samplesV, p.samplesW).map(({ v, w }) =>
-    evaluateVelocity(robot, v, w, grid, goal, p),
-  );
+  const candidates = sampleWindow(window, p.samplesV, p.samplesW).map(({ v, w, iv, iw }) => ({
+    ...evaluateVelocity(robot, v, w, grid, goal, p),
+    iv,
+    iw,
+  }));
   const best = scoreCandidates(candidates, p);
   return { window, candidates, best };
 }

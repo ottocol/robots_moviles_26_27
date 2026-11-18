@@ -159,6 +159,9 @@ input[type="range"] { accent-color: var(--accent); width: 110px; }
   font-size: 13px;
 }
 .inline-range output { min-width: 6.5ch; color: var(--ink); }
+.inline-check { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; }
+.inline-check input { accent-color: var(--accent); width: 16px; height: 16px; margin: 0; }
+.muted { color: var(--muted); }
 
 .statusbar {
   display: flex;
@@ -302,6 +305,10 @@ canvas[data-tool="robot"], canvas[data-tool="goal"] { cursor: crosshair; }
 .bd-row[data-criterion="vel"] .bd-bar i, .bd-stack i[data-criterion="vel"] { background: var(--c-vel); }
 
 .bd-total { padding-top: 8px; border-top: 1px solid var(--line); grid-template-columns: 4.5rem minmax(0, 1fr) auto; }
+.bd-sigma { display: grid; grid-template-columns: 4.5rem minmax(0, 1fr) auto; align-items: center; gap: 10px; }
+.bd-sigma[hidden] { display: none; }
+.bd-sigma-text { color: var(--muted); font-size: 13px; }
+.bd-sum { font-size: 18px; font-weight: 600; }
 .bd-stack { display: flex; height: 14px; border-radius: 4px; background: var(--bg); overflow: hidden; }
 .bd-stack i { display: block; height: 100%; transition: width 120ms ease; }
 .bd-g { font-size: 18px; font-weight: 600; }

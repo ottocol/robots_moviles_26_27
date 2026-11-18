@@ -32,8 +32,13 @@ export class BreakdownPanel {
         ).join('')}
       </div>
       <div class="bd-total">
-        <span class="bd-name">G</span>
+        <span class="bd-name bd-sum-name">G</span>
         <span class="bd-stack">${CRITERIA.map((k) => `<i data-criterion="${k}"></i>`).join('')}</span>
+        <span class="bd-sum mono"></span>
+      </div>
+      <div class="bd-sigma" hidden>
+        <span class="bd-name">G = σ</span>
+        <span class="bd-sigma-text"></span>
         <span class="bd-g mono"></span>
       </div>
       <p class="bd-note"></p>`;
@@ -42,6 +47,10 @@ export class BreakdownPanel {
       vw: root.querySelector('.bd-vw'),
       rows: Object.fromEntries(CRITERIA.map((k) => [k, root.querySelector(`.bd-row[data-criterion="${k}"]`)])),
       stack: Object.fromEntries(CRITERIA.map((k) => [k, root.querySelector(`.bd-stack i[data-criterion="${k}"]`)])),
+      sumName: root.querySelector('.bd-sum-name'),
+      sum: root.querySelector('.bd-sum'),
+      sigma: root.querySelector('.bd-sigma'),
+      sigmaText: root.querySelector('.bd-sigma-text'),
       g: root.querySelector('.bd-g'),
       note: root.querySelector('.bd-note'),
     };
@@ -76,7 +85,20 @@ export class BreakdownPanel {
         `${CRITERION_INFO[k].symbol} ${weights[k].toFixed(2)} × ${norm.toFixed(2)} = ${contrib.toFixed(2)}`;
       el.stack[k].style.width = `${((contrib / weightSum) * 100).toFixed(1)}%`;
     }
-    el.g.textContent = candidate.G.toFixed(3);
+    // Sin σ, G es la suma ponderada. Con σ se muestran las dos.
+    el.sumName.textContent = params.smoothing ? 'suma' : 'G';
+    el.sum.textContent = candidate.sum.toFixed(3);
+    el.sigma.hidden = !params.smoothing;
+    if (params.smoothing) {
+      el.g.textContent = candidate.G.toFixed(3);
+      const delta = candidate.G - candidate.sum;
+      el.sigmaText.textContent =
+        Math.abs(delta) < 0.0005
+          ? 'sus vecinos puntúan como él'
+          : delta < 0
+            ? `sus vecinos le restan ${(-delta).toFixed(3)}`
+            : `sus vecinos le suman ${delta.toFixed(3)}`;
+    }
     el.note.textContent = noteFor(candidate, params);
   }
 }

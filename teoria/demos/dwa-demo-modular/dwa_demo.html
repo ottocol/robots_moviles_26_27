@@ -168,6 +168,9 @@ input[type="range"] { accent-color: var(--accent); width: 110px; }
   font-size: 13px;
 }
 .inline-range output { min-width: 6.5ch; color: var(--ink); }
+.inline-check { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; }
+.inline-check input { accent-color: var(--accent); width: 16px; height: 16px; margin: 0; }
+.muted { color: var(--muted); }
 
 .statusbar {
   display: flex;
@@ -311,6 +314,10 @@ canvas[data-tool="robot"], canvas[data-tool="goal"] { cursor: crosshair; }
 .bd-row[data-criterion="vel"] .bd-bar i, .bd-stack i[data-criterion="vel"] { background: var(--c-vel); }
 
 .bd-total { padding-top: 8px; border-top: 1px solid var(--line); grid-template-columns: 4.5rem minmax(0, 1fr) auto; }
+.bd-sigma { display: grid; grid-template-columns: 4.5rem minmax(0, 1fr) auto; align-items: center; gap: 10px; }
+.bd-sigma[hidden] { display: none; }
+.bd-sigma-text { color: var(--muted); font-size: 13px; }
+.bd-sum { font-size: 18px; font-weight: 600; }
 .bd-stack { display: flex; height: 14px; border-radius: 4px; background: var(--bg); overflow: hidden; }
 .bd-stack i { display: block; height: 100%; transition: width 120ms ease; }
 .bd-g { font-size: 18px; font-weight: 600; }
@@ -417,6 +424,7 @@ canvas[data-tool="robot"], canvas[data-tool="goal"] { cursor: crosshair; }
           <li><strong>Aceleraciones:</strong> súbelas y la ventana crece hasta casi cubrir V<sub>s</sub>; bájalas y el robot tiene que empezar a girar mucho antes de la pared.</li>
           <li><strong>Arco evaluado por debajo de la distancia de frenada</strong> (1,25 m con los valores por defecto): el robot no pasa de cierta velocidad ni en el mapa vacío.</li>
           <li><strong>Pesos:</strong> con α alto el robot se planta delante de los obstáculos alineados con el objetivo.</li>
+          <li><strong>Suavizado σ</strong> (en Parámetros): G pasa a ser la media de la suma ponderada del par y la de sus 8 vecinos en (v, ω); los no admisibles cuentan como 0. Un par rodeado de pares que chocan pierde puntos, así que se eligen curvaturas con margen a los lados. Se nota sobre todo al cruzar la puerta estrecha.</li>
         </ul>
       </section>
     </div>
@@ -491,6 +499,10 @@ canvas[data-tool="robot"], canvas[data-tool="goal"] { cursor: crosshair; }
             <option value="fixed">dividir por el máximo teórico</option>
           </select>
         </label>
+        <label class="inline-check" for="smoothing">
+          <input type="checkbox" id="smoothing">
+          suavizado σ <span class="muted">(media con los 8 vecinos en v, ω)</span>
+        </label>
       </div>
       <div id="param-controls" class="param-grid"></div>
     </section>
@@ -560,6 +572,7 @@ const DEFAULT_PARAMS = {
   dMax: 2.0, // m  longitud de curvatura evaluada = tope del criterio dist
   arcStep: 0.05, // m  resolución al recorrer cada curvatura
   normalization: 'minmax', // 'minmax' (sobre la ventana) | 'fixed' (máximo teórico)
+  smoothing: false, // suavizado σ de G sobre la rejilla (v, ω)
 
   goalTolerance: 0.3, // m
 };
@@ -875,7 +888,8 @@ function advanceRobot(robot, command, dt) {
  *        vel:     la propia v.
  *   3. Se descartan los no admisibles (los que no pueden frenar antes del
  *      obstáculo), se normalizan los criterios y se puntúa
- *          G(v, ω) = α·heading + β·dist + γ·vel
+ *          G(v, ω) = σ(α·heading + β·dist + γ·vel)
+ *      donde σ es un suavizado opcional sobre la rejilla (v, ω).
  *   4. Se aplica el (v, ω) con mayor G.
  */
 
@@ -897,14 +911,19 @@ function dynamicWindow(robot, p) {
   };
 }
 
-/** Rejilla de nV × nW pares (v, ω) dentro de la ventana. */
+/**
+ * Rejilla de nV × nW pares (v, ω) dentro de la ventana. Cada muestra guarda
+ * su fila (iv) y columna (iw) en la rejilla, que usa el suavizado σ.
+ */
 function sampleWindow(win, nV, nW) {
   const samples = [];
-  for (let a = 0; a < nV; a++) {
-    for (let b = 0; b < nW; b++) {
+  for (let iv = 0; iv < nV; iv++) {
+    for (let iw = 0; iw < nW; iw++) {
       samples.push({
-        v: linspaceAt(win.vLo, win.vHi, nV, a),
-        w: linspaceAt(win.wLo, win.wHi, nW, b),
+        v: linspaceAt(win.vLo, win.vHi, nV, iv),
+        w: linspaceAt(win.wLo, win.wHi, nW, iw),
+        iv,
+        iw,
       });
     }
   }
@@ -919,11 +938,14 @@ function sampleWindow(win, nV, nW) {
  * Recorre la curvatura hasta el primer choque del disco del robot.
  * Devuelve el índice de la pose de choque (-1 si no choca) y la distancia
  * libre recorrida (con tope dMax; un giro sobre sí mismo sin choque vale dMax).
+ * La distancia libre es la de la última pose SIN choque: contar hasta la
+ * pose que ya choca sobrestimaría el espacio en hasta un paso de muestreo.
  */
 function freeDistanceAlong(path, grid, p) {
   for (let k = 0; k < path.length; k++) {
     if (grid.clearanceAt(path[k].x, path[k].y) < p.radius) {
-      return { collisionIndex: k, dist: Math.min(p.dMax, path[k].s) };
+      const lastFree = k === 0 ? 0 : path[k - 1].s;
+      return { collisionIndex: k, dist: Math.min(p.dMax, lastFree) };
     }
   }
   return { collisionIndex: -1, dist: p.dMax };
@@ -971,7 +993,8 @@ function evaluateVelocity(robot, v, w, grid, goal, p) {
     headingPose: poseH,
     headingError,
     raw: { heading: Math.PI - headingError, dist, vel: v },
-    norm: null, // se rellena en scoreCandidates
+    norm: null, // se rellenan en scoreCandidates
+    sum: 0,
     G: 0,
   };
 }
@@ -1000,27 +1023,68 @@ function criterionWeights(p) {
 }
 
 /**
- * Normaliza cada criterio a [0, 1], calcula G y devuelve el mejor admisible
- * (o null si no hay ninguno). Si todos los candidatos empatan en un
- * criterio, ese criterio vale 1 para todos: no discrimina.
+ * Normaliza cada criterio a [0, 1], calcula la suma ponderada, aplica (si
+ * está activado) el suavizado σ y devuelve el mejor admisible (o null si no
+ * hay ninguno). Si todos los candidatos empatan en un criterio, ese criterio
+ * vale 1 para todos: no discrimina.
+ *
+ * Cada candidato queda con:
+ *   c.sum  la suma ponderada α·heading + β·dist + γ·vel
+ *   c.G    la puntuación final: c.sum, o su versión suavizada si hay σ
  */
 function scoreCandidates(candidates, p) {
   const admissible = candidates.filter((c) => c.admissible);
   const ranges = normalizationRanges(admissible, p);
   const weights = criterionWeights(p);
-  let best = null;
 
   for (const c of candidates) {
     c.norm = {};
-    c.G = 0;
+    c.sum = 0;
     for (const k of CRITERIA) {
       const { lo, hi } = ranges[k];
       c.norm[k] = hi - lo > 1e-9 ? clamp((c.raw[k] - lo) / (hi - lo), 0, 1) : 1;
-      c.G += weights[k] * c.norm[k];
+      c.sum += weights[k] * c.norm[k];
     }
-    if (c.admissible && (best === null || c.G > best.G)) best = c;
+    c.G = c.sum;
   }
+  if (p.smoothing) smoothScores(candidates);
+
+  let best = null;
+  for (const c of admissible) if (best === null || c.G > best.G) best = c;
   return best;
+}
+
+/** Núcleo 3 × 3 del suavizado (aproximación de una gaussiana). */
+const SMOOTHING_KERNEL = [
+  [1, 2, 1],
+  [2, 4, 2],
+  [1, 2, 1],
+];
+
+/**
+ * Suavizado σ del paper: la puntuación de cada par pasa a ser la media
+ * ponderada de la suya y la de sus vecinos en la rejilla (v, ω).
+ * Los pares no admisibles cuentan como 0, así que un par rodeado de pares
+ * que chocan pierde puntos: se prefieren curvaturas con margen a los lados.
+ * En el borde de la ventana solo se promedian los vecinos que existen.
+ */
+function smoothScores(candidates) {
+  const at = new Map(candidates.map((c) => [`${c.iv},${c.iw}`, c]));
+  const value = (c) => (c.admissible ? c.sum : 0);
+  for (const c of candidates) {
+    let total = 0;
+    let weight = 0;
+    for (let dv = -1; dv <= 1; dv++) {
+      for (let dw = -1; dw <= 1; dw++) {
+        const neighbour = at.get(`${c.iv + dv},${c.iw + dw}`);
+        if (!neighbour) continue;
+        const k = SMOOTHING_KERNEL[dv + 1][dw + 1];
+        total += k * value(neighbour);
+        weight += k;
+      }
+    }
+    c.G = total / weight;
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -1030,9 +1094,11 @@ function scoreCandidates(candidates, p) {
 /** Un ciclo de DWA: ventana, candidatos evaluados y el mejor. */
 function planDwa(robot, grid, goal, p) {
   const window = dynamicWindow(robot, p);
-  const candidates = sampleWindow(window, p.samplesV, p.samplesW).map(({ v, w }) =>
-    evaluateVelocity(robot, v, w, grid, goal, p),
-  );
+  const candidates = sampleWindow(window, p.samplesV, p.samplesW).map(({ v, w, iv, iw }) => ({
+    ...evaluateVelocity(robot, v, w, grid, goal, p),
+    iv,
+    iw,
+  }));
   const best = scoreCandidates(candidates, p);
   return { window, candidates, best };
 }
@@ -1747,8 +1813,13 @@ class BreakdownPanel {
         ).join('')}
       </div>
       <div class="bd-total">
-        <span class="bd-name">G</span>
+        <span class="bd-name bd-sum-name">G</span>
         <span class="bd-stack">${CRITERIA.map((k) => `<i data-criterion="${k}"></i>`).join('')}</span>
+        <span class="bd-sum mono"></span>
+      </div>
+      <div class="bd-sigma" hidden>
+        <span class="bd-name">G = σ</span>
+        <span class="bd-sigma-text"></span>
         <span class="bd-g mono"></span>
       </div>
       <p class="bd-note"></p>`;
@@ -1757,6 +1828,10 @@ class BreakdownPanel {
       vw: root.querySelector('.bd-vw'),
       rows: Object.fromEntries(CRITERIA.map((k) => [k, root.querySelector(`.bd-row[data-criterion="${k}"]`)])),
       stack: Object.fromEntries(CRITERIA.map((k) => [k, root.querySelector(`.bd-stack i[data-criterion="${k}"]`)])),
+      sumName: root.querySelector('.bd-sum-name'),
+      sum: root.querySelector('.bd-sum'),
+      sigma: root.querySelector('.bd-sigma'),
+      sigmaText: root.querySelector('.bd-sigma-text'),
       g: root.querySelector('.bd-g'),
       note: root.querySelector('.bd-note'),
     };
@@ -1791,7 +1866,20 @@ class BreakdownPanel {
         `${CRITERION_INFO[k].symbol} ${weights[k].toFixed(2)} × ${norm.toFixed(2)} = ${contrib.toFixed(2)}`;
       el.stack[k].style.width = `${((contrib / weightSum) * 100).toFixed(1)}%`;
     }
-    el.g.textContent = candidate.G.toFixed(3);
+    // Sin σ, G es la suma ponderada. Con σ se muestran las dos.
+    el.sumName.textContent = params.smoothing ? 'suma' : 'G';
+    el.sum.textContent = candidate.sum.toFixed(3);
+    el.sigma.hidden = !params.smoothing;
+    if (params.smoothing) {
+      el.g.textContent = candidate.G.toFixed(3);
+      const delta = candidate.G - candidate.sum;
+      el.sigmaText.textContent =
+        Math.abs(delta) < 0.0005
+          ? 'sus vecinos puntúan como él'
+          : delta < 0
+            ? `sus vecinos le restan ${(-delta).toFixed(3)}`
+            : `sus vecinos le suman ${delta.toFixed(3)}`;
+    }
     el.note.textContent = noteFor(candidate, params);
   }
 }
@@ -1980,6 +2068,7 @@ const dom = {
   scenarioSelect: document.getElementById('scenario'),
   colorBySelect: document.getElementById('color-by'),
   normalizationSelect: document.getElementById('normalization'),
+  smoothingCheckbox: document.getElementById('smoothing'),
   speedInput: document.getElementById('speed'),
   speedOutput: document.getElementById('speed-out'),
   brushInput: document.getElementById('brush'),
@@ -2241,6 +2330,11 @@ function bindControls() {
   dom.normalizationSelect.value = params.normalization;
   dom.normalizationSelect.addEventListener('change', () => {
     params.normalization = dom.normalizationSelect.value;
+    replan();
+  });
+  dom.smoothingCheckbox.checked = params.smoothing;
+  dom.smoothingCheckbox.addEventListener('change', () => {
+    params.smoothing = dom.smoothingCheckbox.checked;
     replan();
   });
 

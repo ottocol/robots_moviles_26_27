@@ -72,6 +72,7 @@
           <li><strong>Aceleraciones:</strong> súbelas y la ventana crece hasta casi cubrir V<sub>s</sub>; bájalas y el robot tiene que empezar a girar mucho antes de la pared.</li>
           <li><strong>Arco evaluado por debajo de la distancia de frenada</strong> (1,25 m con los valores por defecto): el robot no pasa de cierta velocidad ni en el mapa vacío.</li>
           <li><strong>Pesos:</strong> con α alto el robot se planta delante de los obstáculos alineados con el objetivo.</li>
+          <li><strong>Suavizado σ</strong> (en Parámetros): G pasa a ser la media de la suma ponderada del par y la de sus 8 vecinos en (v, ω); los no admisibles cuentan como 0. Un par rodeado de pares que chocan pierde puntos, así que se eligen curvaturas con margen a los lados. Se nota sobre todo al cruzar la puerta estrecha.</li>
         </ul>
       </section>
     </div>
@@ -145,6 +146,10 @@
             <option value="minmax">min-max sobre la ventana</option>
             <option value="fixed">dividir por el máximo teórico</option>
           </select>
+        </label>
+        <label class="inline-check" for="smoothing">
+          <input type="checkbox" id="smoothing">
+          suavizado σ <span class="muted">(media con los 8 vecinos en v, ω)</span>
         </label>
       </div>
       <div id="param-controls" class="param-grid"></div>

@@ -64,6 +64,7 @@ const dom = {
   scenarioSelect: document.getElementById('scenario'),
   colorBySelect: document.getElementById('color-by'),
   normalizationSelect: document.getElementById('normalization'),
+  smoothingCheckbox: document.getElementById('smoothing'),
   speedInput: document.getElementById('speed'),
   speedOutput: document.getElementById('speed-out'),
   brushInput: document.getElementById('brush'),
@@ -325,6 +326,11 @@ function bindControls() {
   dom.normalizationSelect.value = params.normalization;
   dom.normalizationSelect.addEventListener('change', () => {
     params.normalization = dom.normalizationSelect.value;
+    replan();
+  });
+  dom.smoothingCheckbox.checked = params.smoothing;
+  dom.smoothingCheckbox.addEventListener('change', () => {
+    params.smoothing = dom.smoothingCheckbox.checked;
     replan();
   });
 

@@ -26,6 +26,7 @@ export const DEFAULT_PARAMS = {
   dMax: 2.0, // m  longitud de curvatura evaluada = tope del criterio dist
   arcStep: 0.05, // m  resolución al recorrer cada curvatura
   normalization: 'minmax', // 'minmax' (sobre la ventana) | 'fixed' (máximo teórico)
+  smoothing: false, // suavizado σ de G sobre la rejilla (v, ω)
 
   goalTolerance: 0.3, // m
 };
